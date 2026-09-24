@@ -2,6 +2,7 @@ import os
 import requests
 from flask import Flask, request
 from google import genai
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -25,12 +26,11 @@ def sintetizza_e_formalizza(testo_grezzo):
         "esclusivamente in un paragrafo descrittivo dell'evento o dell'attività svolta, "
         "scritto con un tono formale e professionale. "
         "Regole tassative: "
-        "1. Non inserire data, ora, intestazioni, elenchi puntati o saluti. "
+        "1. Non inserire data, ora, intestazioni, firme o saluti nel testo (verranno aggiunti automaticamente dal sistema). "
         "2. Non aggiungere frasi di chiusura (es. 'seguiranno aggiornamenti'). "
         "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
     )
     
-    # Proviamo prima il modello principale, con un fallback in caso di sovraccarico (503)
     modelli = ["gemini-3.8-flash", "gemini-2.5-flash"]
     
     for modello in modelli:
@@ -45,7 +45,6 @@ def sintetizza_e_formalizza(testo_grezzo):
             print(f"Tentativo fallito con {modello}: {str(e)}")
             continue
             
-    # Se falliscono entrambi, restituisce il testo originale per sicurezza
     return testo_grezzo
 
 def leggi_diario_da_github():
@@ -64,17 +63,18 @@ def leggi_diario_da_github():
         return diario_list, sha
     return [], None
 
-def salva_diario_su_github(nuova_nota):
+def salva_diario_su_github(testo_nota, autore):
     import base64
     import json
-    from datetime import datetime
     
     diario_list, sha = leggi_diario_da_github()
     
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Registriamo data, ora e autore in modo strutturato
+    timestamp = datetime.now().strftime("%d/%m/%Y alle %H:%M")
     entry = {
         "timestamp": timestamp,
-        "testo": nuova_nota
+        "autore": autore,
+        "testo": testo_nota
     }
     
     diario_list.insert(0, entry)
@@ -83,11 +83,10 @@ def salva_diario_su_github(nuova_nota):
     headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
     
     updated_content_bytes = json.dumps(diario_list, indent=4, ensure_ascii=False).encode('utf-8')
-    # Corretto: b64encode restituisce già bytes, non serve chiamare .encode()
     encoded_content = base64.b64encode(updated_content_bytes).decode('utf-8')
     
     data = {
-        "message": "Aggiornamento diario con descrizione essenziale",
+        "message": "Aggiunta nota di diario con data, ora e autore",
         "content": encoded_content,
         "sha": sha
     }
@@ -102,11 +101,20 @@ def webhook():
         chat_id = data['message']['chat']['id']
         testo_grezzo = data['message']['text']
         
+        # Estraiamo il nome o il nickname di chi ha scritto su Telegram
+        user_info = data['message'].get('from', {})
+        nome = user_info.get('first_name', 'Educatore')
+        cognome = user_info.get('last_name', '')
+        autore = f"{nome} {cognome}".strip()
+        
+        # 1. Sintesi pulita della descrizione
         testo_professionale = sintetizza_e_formalizza(testo_grezzo)
-        successo = salva_diario_su_github(testo_professionale)
+        
+        # 2. Salvataggio su GitHub includendo autore, data e ora
+        successo = salva_diario_su_github(testo_professionale, autore)
         
         if successo:
-            msg_risposta = f"Nota registrata:\n\n{testo_professionale}"
+            msg_risposta = f"Nota registrata correttamente per le ore {datetime.now().strftime('%H:%M')} da {autore}."
         else:
             msg_risposta = "Errore durante il salvataggio."
             
@@ -131,6 +139,7 @@ def home():
             body { font-family: Georgia, serif; background: #f4ecd8; color: #2c221e; max-width: 800px; margin: 40px auto; padding: 20px; }
             h1 { text-align: center; border-bottom: 2px solid #bfa181; padding-bottom: 10px; margin-bottom: 30px; }
             .note { background: #fffaf0; border-left: 4px solid #8b5a2b; padding: 15px; margin-bottom: 20px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
+            .meta { font-size: 0.85em; color: #7f6a55; margin-bottom: 8px; font-weight: bold; border-bottom: 1px dashed #e6d7be; padding-bottom: 4px; }
             .text { font-size: 1.05em; line-height: 1.5; }
         </style>
     </head>
@@ -141,6 +150,7 @@ def home():
     for entry in diario_list:
         html += f"""
             <div class="note">
+                <div class="meta">Inserito da {entry.get('autore', 'Operatore')} il {entry.get('timestamp', '')}</div>
                 <div class="text">{entry.get('testo', '')}</div>
             </div>
         """

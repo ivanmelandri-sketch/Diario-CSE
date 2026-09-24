@@ -4,19 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Diario di Bordo CSE</title>
-    <!-- Importiamo un font arrotondato e accogliente da Google Fonts -->
+    <!-- Importiamo un font arrotondato e accogliente -->
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         body {
-            /* Sfondo caldo stile pergamena/carta avorio */
-            background-color: #f7f2e7;
-            background-image: radial-gradient(#e6dec7 15%, transparent 16%), radial-gradient(#e6dec7 15%, transparent 16%);
-            background-size: 60px 60px;
-            background-position: 0 0, 30px 30px;
+            /* Sfondo pergamena calda e irregolare con effetto sfumato */
+            background-color: #f4ecdc;
+            background-image: 
+                radial-gradient(circle at 50% 50%, rgba(245, 235, 215, 0.8) 0%, rgba(215, 198, 170, 0.6) 100%),
+                repeating-linear-gradient(45deg, rgba(139, 115, 85, 0.03) 0, rgba(139, 115, 85, 0.03) 2px, transparent 0, transparent 4px);
             font-family: 'Quicksand', sans-serif;
-            color: #2c2c2c;
+            color: #3a3229;
             margin: 0;
             padding: 20px;
+            min-height: 100vh;
         }
         .container {
             max-width: 700px;
@@ -25,35 +26,37 @@
         header {
             text-align: center;
             margin-bottom: 30px;
-            border-bottom: 2px dashed #d1c7af;
+            border-bottom: 2px dashed #c2b299;
             padding-bottom: 15px;
         }
         h1 {
             font-size: 1.8rem;
-            color: #4a3b32;
+            color: #4a382c;
             margin: 0;
+            letter-spacing: 0.5px;
         }
         p.subtitle {
-            color: #7a6b5e;
+            color: #7d6b5c;
             font-size: 0.95rem;
             margin-top: 5px;
         }
-        /* Stile Block Notes / Fogli incollati */
+        /* Stile Block Notes / Fogli di carta antica */
         .note-card {
-            background: #fffdf9;
-            border: 1px solid #e0d5be;
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            background: #fffdf7;
+            border: 1px solid #d4c5ab;
+            border-left: 5px solid #a89378; /* Effetto margine laterale del quaderno */
+            border-radius: 6px;
+            padding: 22px;
+            margin-bottom: 22px;
+            box-shadow: 0 4px 15px rgba(80, 60, 40, 0.08);
             position: relative;
         }
         .note-header {
             display: flex;
             justify-content: space-between;
             font-size: 0.85rem;
-            color: #8c7b6d;
-            border-bottom: 1px solid #f0ebe1;
+            color: #8c7863;
+            border-bottom: 1px solid #f0e6d6;
             padding-bottom: 8px;
             margin-bottom: 12px;
             font-weight: 600;
@@ -61,8 +64,8 @@
         .note-body {
             font-size: 1.05rem;
             line-height: 1.6;
-            color: #3b3b3b;
-            white-space: pre-wrap; /* Mantiene gli a capo corretti */
+            color: #2e2821;
+            white-space: pre-wrap;
         }
     </style>
 </head>

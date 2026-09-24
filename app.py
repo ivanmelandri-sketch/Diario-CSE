@@ -14,21 +14,22 @@ FILE_PATH = "diario.json"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 def sintetizza_e_formalizza(testo_grezzo):
-    """Usa Google Gemini per ripulire, sintetizzare e dare un tono professionale al testo."""
+    """Usa Google Gemini per estrarre e formalizzare la sola descrizione dell'evento."""
     if not GEMINI_API_KEY:
-        print("ATTENZIONE: GEMINI_API_KEY non è impostata nelle variabili d'ambiente di Render.")
         return testo_grezzo
         
     try:
-        # Inizializzazione corretta del client Google GenAI
         client = genai.Client(api_key=GEMINI_API_KEY)
+        # Prompt ridotto all'osso per mantenere SOLO la descrizione essenziale e professionale
         prompt_sistema = (
-            "Sei un assistente di redazione professionale per un team socio-educativo. "
-            "Il tuo compito è prendere appunti rapidi, informali o confusi inviati via Telegram "
-            "e trasformarli in una nota di diario strutturata, sintetica, chiara "
-            "e scritta con un tono formale e professionale. "
-            "Mantieni intatti i concetti chiave, i dati o le decisioni prese, eliminando le "
-            "ripetizioni o i riempitivi verbali."
+            "Sei un assistente di redazione per un team socio-educativo. "
+            "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
+            "esclusivamente in un paragrafo descrittivo dell'evento o dell'attività svolta, "
+            "scritto con un tono formale e professionale. "
+            "Regole tassative: "
+            "1. Non inserire data, ora, intestazioni, elenchi puntati o saluti. "
+            "2. Non aggiungere frasi di chiusura (es. 'seguiranno aggiornamenti'). "
+            "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
         )
         
         response = client.models.generate_content(
@@ -67,6 +68,8 @@ def salva_diario_su_github(nuova_nota):
     
     diario_list, sha = leggi_diario_da_github()
     
+    # Salviamo comunque il timestamp tecnico nel JSON di GitHub per ordinare la cronologia, 
+    # ma lo nasconderemo dalla visualizzazione della pergamena se vuoi un look pulito
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = {
         "timestamp": timestamp,
@@ -79,10 +82,10 @@ def salva_diario_su_github(nuova_nota):
     headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
     
     updated_content_bytes = json.dumps(diario_list, indent=4, ensure_ascii=False).encode('utf-8')
-    encoded_content = base64.b64encode(updated_content_bytes).decode('utf-8')
+    encoded_content = base64.b64encode(updated_content_bytes).encode('utf-8')
     
     data = {
-        "message": "Aggiornamento diario con sintesi professionale",
+        "message": "Aggiornamento diario con descrizione essenziale",
         "content": encoded_content,
         "sha": sha
     }
@@ -97,16 +100,13 @@ def webhook():
         chat_id = data['message']['chat']['id']
         testo_grezzo = data['message']['text']
         
-        # 1. Tentativo di sintesi con l'intelligenza artificiale
         testo_professionale = sintetizza_e_formalizza(testo_grezzo)
-        
-        # 2. Salvataggio su GitHub del risultato (elaborato o grezzo in fallback)
         successo = salva_diario_su_github(testo_professionale)
         
         if successo:
-            msg_risposta = f"Nota elaborata e salvata con successo:\n\n{testo_professionale}"
+            msg_risposta = f"Nota registrata:\n\n{testo_professionale}"
         else:
-            msg_risposta = "Errore durante il salvataggio su GitHub."
+            msg_risposta = "Errore durante il salvataggio."
             
         requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={
             "chat_id": chat_id,
@@ -127,9 +127,9 @@ def home():
         <title>Diario CSE</title>
         <style>
             body { font-family: Georgia, serif; background: #f4ecd8; color: #2c221e; max-width: 800px; margin: 40px auto; padding: 20px; }
-            h1 { text-align: center; border-bottom: 2px solid #bfa181; padding-bottom: 10px; }
+            h1 { text-align: center; border-bottom: 2px solid #bfa181; padding-bottom: 10px; margin-bottom: 30px; }
             .note { background: #fffaf0; border-left: 4px solid #8b5a2b; padding: 15px; margin-bottom: 20px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
-            .time { font-size: 0.85em; color: #7f6a55; margin-bottom: 5px; }
+            .text { font-size: 1.05em; line-height: 1.5; }
         </style>
     </head>
     <body>
@@ -139,8 +139,7 @@ def home():
     for entry in diario_list:
         html += f"""
             <div class="note">
-                <div class="time">{entry.get('timestamp', '')}</div>
-                <div>{entry.get('testo', '')}</div>
+                <div class="text">{entry.get('testo', '')}</div>
             </div>
         """
     html += """

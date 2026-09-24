@@ -17,15 +17,17 @@ def leggi_note_da_github():
         return [{"id": 1, "operatore": "Sistema", "data": "24/09/2026 - 18:35", "testo": "Avviato il sistema."}]
     
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{FILE_PATH}"
-    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}"}
+    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
     response = requests.get(url, headers=headers)
     
     if response.status_code == 200:
-        file_content = response.json()
-        decoded_bytes = base64.b64decode(file_content["content"])
-        return json.loads(decoded_bytes.decode("utf-8"))
+        try:
+            file_content = response.json()
+            decoded_bytes = base64.b64decode(file_content["content"])
+            return json.loads(decoded_bytes.decode("utf-8"))
+        except Exception:
+            return [{"id": 1, "operatore": "Sistema", "data": "24/09/2026 - 18:35", "testo": "Avviato il sistema."}]
     else:
-        # Se il file non esiste ancora, restituisce la nota iniziale
         return [{"id": 1, "operatore": "Sistema", "data": "24/09/2026 - 18:35", "testo": "Avviato il sistema."}]
 
 def salva_nota_su_github(nuova_nota):
@@ -35,29 +37,31 @@ def salva_nota_su_github(nuova_nota):
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{FILE_PATH}"
     headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
     
-    # Leggiamo il file attuale per recuperare il "sha" (codice di versione richiesto da GitHub) e la lista esistenti
     response = requests.get(url, headers=headers)
     note_esistenti = []
     sha = None
     
     if response.status_code == 200:
-        file_data = response.json()
-        sha = file_data["sha"]
-        decoded_bytes = base64.b64decode(file_data["content"])
-        note_esistenti = json.loads(decoded_bytes.decode("utf-8"))
-        
+        try:
+            file_data = response.json()
+            sha = file_data["sha"]
+            decoded_bytes = base64.b64decode(file_data["content"])
+            note_esistenti = json.loads(decoded_bytes.decode("utf-8"))
+        except Exception:
+            note_esistenti = []
+            
     note_esistenti.append(nuova_nota)
     
-    # Prepariamo i dati da rimandare su GitHub convertiti in formato digitale (base64)
     nuovo_contenuto_str = json.dumps(note_esistenti, indent=4, ensure_ascii=False)
     content_encoded = base64.b64encode(nuovo_contenuto_str.encode("utf-8")).decode("utf-8")
     
     payload = {
         "message": f"Aggiunta nuova nota di {nuova_nota['operatore']}",
-        "content": content_encoded,
-        "sha": sha
+        "content": content_encoded
     }
-    
+    if sha:
+        payload["sha"] = sha
+        
     requests.put(url, headers=headers, json=payload)
 
 @app.route('/')
@@ -75,7 +79,6 @@ def telegram_webhook():
         user_name = message["from"].get("first_name", "Operatore")
         
         testo_nota = ""
-        
         if "text" in message:
             testo_nota = message["text"]
         elif "voice" in message:
@@ -93,9 +96,7 @@ def telegram_webhook():
                 "testo": testo_nota
             }
             
-            # Salvataggio sicuro e permanente su GitHub!
             salva_nota_su_github(nuova_nota)
-            
             invia_messaggio_telegram(chat_id, f"✅ Nota pubblicata con successo sul diario, {user_name}!")
         else:
             invia_messaggio_telegram(chat_id, "Invia un testo o un vocale da aggiungere al diario.")

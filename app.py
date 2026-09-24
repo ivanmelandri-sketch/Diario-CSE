@@ -18,32 +18,35 @@ def sintetizza_e_formalizza(testo_grezzo):
     if not GEMINI_API_KEY:
         return testo_grezzo
         
-    try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        # Prompt ridotto all'osso per mantenere SOLO la descrizione essenziale e professionale
-        prompt_sistema = (
-            "Sei un assistente di redazione per un team socio-educativo. "
-            "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
-            "esclusivamente in un paragrafo descrittivo dell'evento o dell'attività svolta, "
-            "scritto con un tono formale e professionale. "
-            "Regole tassative: "
-            "1. Non inserire data, ora, intestazioni, elenchi puntati o saluti. "
-            "2. Non aggiungere frasi di chiusura (es. 'seguiranno aggiornamenti'). "
-            "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
-        )
-        
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
-        )
-        
-        if response and response.text:
-            return response.text.strip()
-        return testo_grezzo
-        
-    except Exception as e:
-        print(f"ERRORE CRITICO durante la chiamata a Gemini: {str(e)}")
-        return testo_grezzo
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    prompt_sistema = (
+        "Sei un assistente di redazione per un team socio-educativo. "
+        "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
+        "esclusivamente in un paragrafo descrittivo dell'evento o dell'attività svolta, "
+        "scritto con un tono formale e professionale. "
+        "Regole tassative: "
+        "1. Non inserire data, ora, intestazioni, elenchi puntati o saluti. "
+        "2. Non aggiungere frasi di chiusura (es. 'seguiranno aggiornamenti'). "
+        "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
+    )
+    
+    # Proviamo prima il modello principale, con un fallback in caso di sovraccarico (503)
+    modelli = ["gemini-3.8-flash", "gemini-2.5-flash"]
+    
+    for modello in modelli:
+        try:
+            response = client.models.generate_content(
+                model=modello,
+                contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
+            )
+            if response and response.text:
+                return response.text.strip()
+        except Exception as e:
+            print(f"Tentativo fallito con {modello}: {str(e)}")
+            continue
+            
+    # Se falliscono entrambi, restituisce il testo originale per sicurezza
+    return testo_grezzo
 
 def leggi_diario_da_github():
     import base64
@@ -68,8 +71,6 @@ def salva_diario_su_github(nuova_nota):
     
     diario_list, sha = leggi_diario_da_github()
     
-    # Salviamo comunque il timestamp tecnico nel JSON di GitHub per ordinare la cronologia, 
-    # ma lo nasconderemo dalla visualizzazione della pergamena se vuoi un look pulito
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = {
         "timestamp": timestamp,
@@ -82,7 +83,8 @@ def salva_diario_su_github(nuova_nota):
     headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
     
     updated_content_bytes = json.dumps(diario_list, indent=4, ensure_ascii=False).encode('utf-8')
-    encoded_content = base64.b64encode(updated_content_bytes).encode('utf-8')
+    # Corretto: b64encode restituisce già bytes, non serve chiamare .encode()
+    encoded_content = base64.b64encode(updated_content_bytes).decode('utf-8')
     
     data = {
         "message": "Aggiornamento diario con descrizione essenziale",

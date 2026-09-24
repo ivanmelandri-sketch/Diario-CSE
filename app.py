@@ -14,8 +14,10 @@ FILE_PATH = "diario.json"
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
+# Memoria temporanea per la nota in attesa di conferma (chat_id -> dati_nota)
+pending_notes = {}
+
 def sintetizza_e_formalizza(testo_grezzo):
-    """Usa Google Gemini per estrarre e formalizzare la sola descrizione dell'evento."""
     if not GEMINI_API_KEY:
         return testo_grezzo
         
@@ -32,16 +34,15 @@ def sintetizza_e_formalizza(testo_grezzo):
             "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
         )
         
-        # Usiamo il modello ufficiale raccomandato
         response = client.models.generate_content(
-            model="gemini-3.8-flash",
+            model="gemini-2.0-flash",
             contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
         )
         
         if response and response.text:
             return response.text.strip()
     except Exception as e:
-        print(f"Errore temporaneo con l'IA (ritorno al testo originale): {str(e)}")
+        print(f"ERRORE DI GEMINI: {str(e)}")
         
     return testo_grezzo
 
@@ -83,7 +84,7 @@ def salva_diario_su_github(testo_nota, autore):
     encoded_content = base64.b64encode(updated_content_bytes).decode('utf-8')
     
     data = {
-        "message": "Aggiunta nota di diario",
+        "message": "Aggiunta nota di diario confermata",
         "content": encoded_content,
         "sha": sha
     }
@@ -96,24 +97,48 @@ def webhook():
     data = request.json
     if 'message' in data and 'text' in data['message']:
         chat_id = data['message']['chat']['id']
-        testo_grezzo = data['message']['text']
+        testo_ricevuto = data['message']['text']
         
         user_info = data['message'].get('from', {})
-        nome = user_info.get('first_name', 'Educatore')
+        # Se non c'è il nome su Telegram, usa "Ivan" come default
+        nome = user_info.get('first_name', 'Ivan')
         cognome = user_info.get('last_name', '')
         autore = f"{nome} {cognome}".strip()
-        
-        testo_professionale = sintetizza_e_formalizza(testo_grezzo)
-        successo = salva_diario_su_github(testo_professionale, autore)
-        
-        if successo:
-            msg_risposta = f"Nota registrata correttamente alle {datetime.now().strftime('%H:%M')} da {autore}."
+        if not autore:
+            autore = "Ivan"
+
+        # Se l'utente risponde con "ok" o "conferma" e ha una nota in sospeso, la pubblichiamo
+        if chat_id in pending_notes and testo_ricevuto.lower() in ["ok", "conferma", "pubblica", "sì", "si"]:
+            nota_da_salvare = pending_notes[chat_id]
+            successo = salva_diario_su_github(nota_da_salvare, autore)
+            
+            del pending_notes[chat_id] # ripuliamo la memoria
+            
+            if successo:
+                msg_risposta = "Nota pubblicata ufficialmente sulla pergamena! ✨"
+            else:
+                msg_risposta = "Errore durante il salvataggio su GitHub."
+
+        elif chat_id in pending_notes and testo_ricevuto.lower().startswith("modifica:"):
+            # L'utente ha scritto "modifica: [nuovo testo]"
+            nuovo_testo = testo_ricevuto[9:].strip()
+            pending_notes[chat_id] = nuovo_testo
+            msg_risposta = f"Testo aggiornato:\n\n\"{nuovo_testo}\"\n\nVa bene ora? Rispondi **OK** per pubblicare o scrivi un'altra **Modifica: ...**"
+
         else:
-            msg_risposta = "Errore durante il salvataggio."
+            # Primo messaggio: elaboriamo con Gemini e mettiamo in attesa di conferma
+            testo_professionale = sintetizza_e_formalizza(testo_ricevuto)
+            pending_notes[chat_id] = testo_professionale
+            
+            msg_risposta = (
+                f"Ecco la bozza elaborata:\n\n\"{testo_professionale}\"\n\n"
+                f"Rispondi **OK** per pubblicarla sulla pergamena, oppure scrivi **Modifica: [tuo testo]** se vuoi cambiarla."
+            )
             
         requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={
             "chat_id": chat_id,
-            "text": msg_risposta
+            "text": msg_risposta,
+            "parse_mode": "Markdown"
         })
         
     return "OK", 200
@@ -143,7 +168,7 @@ def home():
     for entry in diario_list:
         html += f"""
             <div class="note">
-                <div class="meta">Inserito da {entry.get('autore', 'Operatore')} il {entry.get('timestamp', '')}</div>
+                <div class="meta">Inserito da {entry.get('autore', 'Ivan')} il {entry.get('timestamp', '')}</div>
                 <div class="text">{entry.get('testo', '')}</div>
             </div>
         """

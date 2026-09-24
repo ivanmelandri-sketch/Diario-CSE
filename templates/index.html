@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diario di Bordo CSE</title>
+    <!-- Importiamo un font arrotondato e accogliente da Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            /* Sfondo caldo stile pergamena/carta avorio */
+            background-color: #f7f2e7;
+            background-image: radial-gradient(#e6dec7 15%, transparent 16%), radial-gradient(#e6dec7 15%, transparent 16%);
+            background-size: 60px 60px;
+            background-position: 0 0, 30px 30px;
+            font-family: 'Quicksand', sans-serif;
+            color: #2c2c2c;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px dashed #d1c7af;
+            padding-bottom: 15px;
+        }
+        h1 {
+            font-size: 1.8rem;
+            color: #4a3b32;
+            margin: 0;
+        }
+        p.subtitle {
+            color: #7a6b5e;
+            font-size: 0.95rem;
+            margin-top: 5px;
+        }
+        /* Stile Block Notes / Fogli incollati */
+        .note-card {
+            background: #fffdf9;
+            border: 1px solid #e0d5be;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            position: relative;
+        }
+        .note-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: #8c7b6d;
+            border-bottom: 1px solid #f0ebe1;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+        .note-body {
+            font-size: 1.05rem;
+            line-height: 1.6;
+            color: #3b3b3b;
+            white-space: pre-wrap; /* Mantiene gli a capo corretti */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Diario di Bordo CSE</h1>
+            <p class="subtitle">Quaderno digitale delle attività e delle note di équipe</p>
+        </header>
+
+        <div class="timeline">
+            {% for note in notes %}
+            <div class="note-card">
+                <div class="note-header">
+                    <span>👤 {{ note.operatore }}</span>
+                    <span>🕒 {{ note.data }}</span>
+                </div>
+                <div class="note-body">
+                    {{ note.testo }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

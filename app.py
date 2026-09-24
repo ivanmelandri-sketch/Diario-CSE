@@ -41,9 +41,6 @@ def sintetizza_e_formalizza(testo_grezzo):
             contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
         )
         
-        # Stampiamo nei log di Render la risposta grezza per debug
-        print(f"Risposta ricevuta da Gemini: {response}")
-        
         if response and hasattr(response, 'text') and response.text:
             return response.text.strip()
         else:
@@ -165,7 +162,7 @@ def webhook():
             }
             requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={
                 "chat_id": chat_id,
-                text := f"Ecco la nota aggiornata:\n\n\"{testo_ricevuto}\"\n\nCosa vuoi fare?",
+                "text": f"Ecco la nota aggiornata:\n\n\"{testo_ricevuto}\"\n\nCosa vuoi fare?",
                 "reply_markup": keyboard
             })
             return "OK", 200

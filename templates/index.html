@@ -8,13 +8,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         body {
-            /* Sfondo pergamena calda e irregolare con effetto sfumato */
-            background-color: #f4ecdc;
+            /* Sfondo pergamena antica con texture di carta mossa e vignettatura calda */
+            background-color: #f2e3c6;
             background-image: 
-                radial-gradient(circle at 50% 50%, rgba(245, 235, 215, 0.8) 0%, rgba(215, 198, 170, 0.6) 100%),
-                repeating-linear-gradient(45deg, rgba(139, 115, 85, 0.03) 0, rgba(139, 115, 85, 0.03) 2px, transparent 0, transparent 4px);
+                radial-gradient(circle at 50% 30%, rgba(255, 248, 230, 0.7) 0%, rgba(210, 185, 140, 0.8) 100%),
+                url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
             font-family: 'Quicksand', sans-serif;
-            color: #3a3229;
+            color: #3b2f2f;
             margin: 0;
             padding: 20px;
             min-height: 100vh;
@@ -26,37 +26,38 @@
         header {
             text-align: center;
             margin-bottom: 30px;
-            border-bottom: 2px dashed #c2b299;
+            border-bottom: 2px dashed #b59b75;
             padding-bottom: 15px;
         }
         h1 {
             font-size: 1.8rem;
-            color: #4a382c;
+            color: #4a3319;
             margin: 0;
             letter-spacing: 0.5px;
+            text-shadow: 0 1px 1px rgba(255,255,255,0.4);
         }
         p.subtitle {
-            color: #7d6b5c;
+            color: #735a3d;
             font-size: 0.95rem;
             margin-top: 5px;
         }
-        /* Stile Block Notes / Fogli di carta antica */
+        /* Stile Foglio di Quaderno Antico */
         .note-card {
-            background: #fffdf7;
-            border: 1px solid #d4c5ab;
-            border-left: 5px solid #a89378; /* Effetto margine laterale del quaderno */
-            border-radius: 6px;
+            background: #fffdf5;
+            border: 1px solid #d4be9d;
+            border-left: 6px solid #8c6d46; /* Margine rilegatura */
+            border-radius: 4px;
             padding: 22px;
             margin-bottom: 22px;
-            box-shadow: 0 4px 15px rgba(80, 60, 40, 0.08);
+            box-shadow: 0 6px 16px rgba(60, 40, 20, 0.12);
             position: relative;
         }
         .note-header {
             display: flex;
             justify-content: space-between;
             font-size: 0.85rem;
-            color: #8c7863;
-            border-bottom: 1px solid #f0e6d6;
+            color: #8c7355;
+            border-bottom: 1px solid #f2ead8;
             padding-bottom: 8px;
             margin-bottom: 12px;
             font-weight: 600;
@@ -64,7 +65,7 @@
         .note-body {
             font-size: 1.05rem;
             line-height: 1.6;
-            color: #2e2821;
+            color: #2b2118;
             white-space: pre-wrap;
         }
     </style>

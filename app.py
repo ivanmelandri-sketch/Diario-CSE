@@ -20,7 +20,8 @@ waiting_for_edit = {}
 def sintetizza_e_formalizza(testo_grezzo):
     """Usa Google Gemini per estrarre e formalizzare la sola descrizione dell'evento."""
     if not GEMINI_API_KEY:
-        return testo_grezzo
+        print("ERRORE: GEMINI_API_KEY non configurata nelle variabili d'ambiente.")
+        return "[Errore: Chiave API Gemini mancante]"
         
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
@@ -35,19 +36,22 @@ def sintetizza_e_formalizza(testo_grezzo):
             "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
         )
         
-        # Usiamo esattamente il modello richiesto dall'API di Google
         response = client.models.generate_content(
             model="gemini-3.8-flash",
             contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
         )
         
-        if response and response.text:
+        # Stampiamo nei log di Render la risposta grezza per debug
+        print(f"Risposta ricevuta da Gemini: {response}")
+        
+        if response and hasattr(response, 'text') and response.text:
             return response.text.strip()
+        else:
+            return "[Errore: L'IA ha restituito una risposta vuota]"
             
     except Exception as e:
-        print(f"ERRORE DI GEMINI: {str(e)}")
-        
-    return testo_grezzo
+        print(f"ERRORE CRITICO NELLA CHIAMATA A GEMINI: {str(e)}")
+        return f"[Errore di elaborazione IA: {str(e)}]"
 
 def leggi_diario_da_github():
     import base64
@@ -161,7 +165,7 @@ def webhook():
             }
             requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={
                 "chat_id": chat_id,
-                "text": f"Ecco la nota aggiornata:\n\n\"{testo_ricevuto}\"\n\nCosa vuoi fare?",
+                text := f"Ecco la nota aggiornata:\n\n\"{testo_ricevuto}\"\n\nCosa vuoi fare?",
                 "reply_markup": keyboard
             })
             return "OK", 200

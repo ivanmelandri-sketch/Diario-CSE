@@ -5,11 +5,10 @@ from google import genai
 
 app = Flask(__name__)
 
-# Recuperiamo i token e le chiavi dalle variabili d'ambiente di Render
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-REPO_NAME = "ivanmelandri-sketch/Diario-CSE"  # Il tuo repository
+REPO_NAME = "ivanmelandri-sketch/Diario-CSE"
 FILE_PATH = "diario.json"
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
@@ -17,10 +16,11 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 def sintetizza_e_formalizza(testo_grezzo):
     """Usa Google Gemini per ripulire, sintetizzare e dare un tono professionale al testo."""
     if not GEMINI_API_KEY:
-        # Se per caso la chiave non c'è, restituisce il testo originale per sicurezza
+        print("ATTENZIONE: GEMINI_API_KEY non è impostata nelle variabili d'ambiente di Render.")
         return testo_grezzo
         
     try:
+        # Inizializzazione corretta del client Google GenAI
         client = genai.Client(api_key=GEMINI_API_KEY)
         prompt_sistema = (
             "Sei un assistente di redazione professionale per un team socio-educativo. "
@@ -35,14 +35,18 @@ def sintetizza_e_formalizza(testo_grezzo):
             model="gemini-2.5-flash",
             contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
         )
-        return response.text.strip()
+        
+        if response and response.text:
+            return response.text.strip()
+        return testo_grezzo
+        
     except Exception as e:
-        print(f"Errore durante la sintesi con Gemini: {e}")
+        print(f"ERRORE CRITICO durante la chiamata a Gemini: {str(e)}")
         return testo_grezzo
 
 def leggi_diario_da_github():
-    """Scarica il file diario.json attuale da GitHub."""
     import base64
+    import json
     url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
     headers = {"Authorization": f"Bearer {GITHUB_TOKEN}"}
     response = requests.get(url, headers=headers)
@@ -51,31 +55,26 @@ def leggi_diario_da_github():
         file_data = response.json()
         content_encoded = file_data.get("content", "")
         sha = file_data.get("sha", "")
-        # Decodifica il contenuto da Base64
-        import json
         decoded_bytes = base64.b64decode(content_encoded)
         diario_list = json.loads(decoded_bytes.decode('utf-8'))
         return diario_list, sha
     return [], None
 
 def salva_diario_su_github(nuova_nota):
-    """Aggiunge la nuova nota elaborata al file JSON su GitHub."""
     import base64
     import json
     from datetime import datetime
     
     diario_list, sha = leggi_diario_da_github()
     
-    # Crea l'oggetto nota con data e testo sintetizzato
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = {
         "timestamp": timestamp,
         "testo": nuova_nota
     }
     
-    diario_list.insert(0, entry)  # Mette la più recente in cima
+    diario_list.insert(0, entry)
     
-    # Prepara il salvataggio
     url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
     headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
     
@@ -98,13 +97,12 @@ def webhook():
         chat_id = data['message']['chat']['id']
         testo_grezzo = data['message']['text']
         
-        # 1. Sintesi e formalizzazione tramite IA
+        # 1. Tentativo di sintesi con l'intelligenza artificiale
         testo_professionale = sintetizza_e_formalizza(testo_grezzo)
         
-        # 2. Salvataggio su GitHub
+        # 2. Salvataggio su GitHub del risultato (elaborato o grezzo in fallback)
         successo = salva_diario_su_github(testo_professionale)
         
-        # 3. Risposta su Telegram
         if successo:
             msg_risposta = f"Nota elaborata e salvata con successo:\n\n{testo_professionale}"
         else:
@@ -119,7 +117,6 @@ def webhook():
 
 @app.route('/')
 def home():
-    # Pagina web di visualizzazione (la pergamena)
     diario_list, _ = leggi_diario_da_github()
     
     html = """

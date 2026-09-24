@@ -1,125 +1,157 @@
 import os
 import requests
-import base64
-import json
-from datetime import datetime, timedelta, timezone
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request
+from google import genai
 
 app = Flask(__name__)
 
+# Recuperiamo i token e le chiavi dalle variabili d'ambiente di Render
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-GITHUB_REPO = os.environ.get("GITHUB_REPO", "ivanmelandri-sketch/Diario-CSE")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+REPO_NAME = "ivanmelandri-sketch/Diario-CSE"  # Il tuo repository
 FILE_PATH = "diario.json"
 
-def leggi_note_da_github():
-    if not GITHUB_TOKEN:
-        return [{"id": 1, "operatore": "Sistema", "data": "24/09/2026 - 18:35", "testo": "Avviato il sistema."}]
-    
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{FILE_PATH}"
-    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code == 200:
-        try:
-            file_content = response.json()
-            decoded_bytes = base64.b64decode(file_content["content"])
-            return json.loads(decoded_bytes.decode("utf-8"))
-        except Exception:
-            return [{"id": 1, "operatore": "Sistema", "data": "24/09/2026 - 18:35", "testo": "Avviato il sistema."}]
-    else:
-        return [{"id": 1, "operatore": "Sistema", "data": "24/09/2026 - 18:35", "testo": "Avviato il sistema."}]
+TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-def salva_nota_su_github(nuova_nota):
-    if not GITHUB_TOKEN:
-        return
-    
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{FILE_PATH}"
-    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
-    
-    response = requests.get(url, headers=headers)
-    note_esistenti = []
-    sha = None
-    
-    if response.status_code == 200:
-        try:
-            file_data = response.json()
-            sha = file_data["sha"]
-            decoded_bytes = base64.b64decode(file_data["content"])
-            note_esistenti = json.loads(decoded_bytes.decode("utf-8"))
-        except Exception:
-            note_esistenti = []
-            
-    note_esistenti.append(nuova_nota)
-    
-    nuovo_contenuto_str = json.dumps(note_esistenti, indent=4, ensure_ascii=False)
-    content_encoded = base64.b64encode(nuovo_contenuto_str.encode("utf-8")).decode("utf-8")
-    
-    payload = {
-        "message": f"Aggiunta nuova nota di {nuova_nota['operatore']}",
-        "content": content_encoded
-    }
-    if sha:
-        payload["sha"] = sha
+def sintetizza_e_formalizza(testo_grezzo):
+    """Usa Google Gemini per ripulire, sintetizzare e dare un tono professionale al testo."""
+    if not GEMINI_API_KEY:
+        # Se per caso la chiave non c'è, restituisce il testo originale per sicurezza
+        return testo_grezzo
         
-    requests.put(url, headers=headers, json=payload)
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        prompt_sistema = (
+            "Sei un assistente di redazione professionale per un team socio-educativo. "
+            "Il tuo compito è prendere appunti rapidi, informali o confusi inviati via Telegram "
+            "e trasformarli in una nota di diario strutturata, sintetica, chiara "
+            "e scritta con un tono formale e professionale. "
+            "Mantieni intatti i concetti chiave, i dati o le decisioni prese, eliminando le "
+            "ripetizioni o i riempitivi verbali."
+        )
+        
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"Errore durante la sintesi con Gemini: {e}")
+        return testo_grezzo
 
-@app.route('/')
-def index():
-    note_database = leggi_note_da_github()
-    return render_template('index.html', notes=note_database[::-1])
+def leggi_diario_da_github():
+    """Scarica il file diario.json attuale da GitHub."""
+    import base64
+    url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
+    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}"}
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code == 200:
+        file_data = response.json()
+        content_encoded = file_data.get("content", "")
+        sha = file_data.get("sha", "")
+        # Decodifica il contenuto da Base64
+        import json
+        decoded_bytes = base64.b64decode(content_encoded)
+        diario_list = json.loads(decoded_bytes.decode('utf-8'))
+        return diario_list, sha
+    return [], None
+
+def salva_diario_su_github(nuova_nota):
+    """Aggiunge la nuova nota elaborata al file JSON su GitHub."""
+    import base64
+    import json
+    from datetime import datetime
+    
+    diario_list, sha = leggi_diario_da_github()
+    
+    # Crea l'oggetto nota con data e testo sintetizzato
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    entry = {
+        "timestamp": timestamp,
+        "testo": nuova_nota
+    }
+    
+    diario_list.insert(0, entry)  # Mette la più recente in cima
+    
+    # Prepara il salvataggio
+    url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
+    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
+    
+    updated_content_bytes = json.dumps(diario_list, indent=4, ensure_ascii=False).encode('utf-8')
+    encoded_content = base64.b64encode(updated_content_bytes).decode('utf-8')
+    
+    data = {
+        "message": "Aggiornamento diario con sintesi professionale",
+        "content": encoded_content,
+        "sha": sha
+    }
+    
+    response = requests.put(url, headers=headers, json=data)
+    return response.status_code in [200, 201]
 
 @app.route('/webhook', methods=['POST'])
-def telegram_webhook():
+def webhook():
     data = request.json
-    print("Messaggio ricevuto da Telegram!")
-    
-    if "message" in data:
-        message = data["message"]
-        chat_id = message["chat"]["id"]
-        user_name = message["from"].get("first_name", "Operatore")
+    if 'message' in data and 'text' in data['message']:
+        chat_id = data['message']['chat']['id']
+        testo_grezzo = data['message']['text']
         
-        testo_nota = ""
-        if "text" in message:
-            testo_nota = message["text"]
-        elif "voice" in message:
-            testo_nota = "[Messaggio Vocale registrato da équipe]"
-            
-        if testo_nota:
-            orario_italiano = datetime.now(timezone.utc) + timedelta(hours=2)
-            data_corrente = orario_italiano.strftime("%d/%m/%Y - %H:%M")
-            
-            note_attuali = leggi_note_da_github()
-            nuova_nota = {
-                "id": len(note_attuali) + 1,
-                "operatore": user_name,
-                "data": data_corrente,
-                "testo": testo_nota
-            }
-            
-            salva_nota_su_github(nuova_nota)
-            invia_messaggio_telegram(chat_id, f"✅ Nota pubblicata con successo sul diario, {user_name}!")
+        # 1. Sintesi e formalizzazione tramite IA
+        testo_professionale = sintetizza_e_formalizza(testo_grezzo)
+        
+        # 2. Salvataggio su GitHub
+        successo = salva_diario_su_github(testo_professionale)
+        
+        # 3. Risposta su Telegram
+        if successo:
+            msg_risposta = f"Nota elaborata e salvata con successo:\n\n{testo_professionale}"
         else:
-            invia_messaggio_telegram(chat_id, "Invia un testo o un vocale da aggiungere al diario.")
+            msg_risposta = "Errore durante il salvataggio su GitHub."
             
-    return jsonify({"status": "ok"})
+        requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={
+            "chat_id": chat_id,
+            "text": msg_risposta
+        })
+        
+    return "OK", 200
 
-def invia_messaggio_telegram(chat_id, testo):
-    if not TELEGRAM_TOKEN:
-        return
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": testo}
-    requests.post(url, json=payload)
-
-@app.route('/set_webhook', methods=['GET'])
-def set_webhook():
-    # Forza l'indirizzo con https sicuro
-    host = request.host.rstrip('/')
-    render_url = f"https://{host}/webhook"
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={render_url}"
-    response = requests.get(url)
-    return jsonify(response.json())
+@app.route('/')
+def home():
+    # Pagina web di visualizzazione (la pergamena)
+    diario_list, _ = leggi_diario_da_github()
+    
+    html = """
+    <!DOCTYPE html>
+    <html lang="it">
+    <head>
+        <meta charset="UTF-8">
+        <title>Diario CSE</title>
+        <style>
+            body { font-family: Georgia, serif; background: #f4ecd8; color: #2c221e; max-width: 800px; margin: 40px auto; padding: 20px; }
+            h1 { text-align: center; border-bottom: 2px solid #bfa181; padding-bottom: 10px; }
+            .note { background: #fffaf0; border-left: 4px solid #8b5a2b; padding: 15px; margin-bottom: 20px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
+            .time { font-size: 0.85em; color: #7f6a55; margin-bottom: 5px; }
+        </style>
+    </head>
+    <body>
+        <h1>Diario Digitale CSE</h1>
+        <div id="notes-container">
+    """
+    for entry in diario_list:
+        html += f"""
+            <div class="note">
+                <div class="time">{entry.get('timestamp', '')}</div>
+                <div>{entry.get('testo', '')}</div>
+            </div>
+        """
+    html += """
+        </div>
+    </body>
+    </html>
+    """
+    return html
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=5000)

@@ -1,5 +1,6 @@
 import os
 import requests
+from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
@@ -7,7 +8,7 @@ app = Flask(__name__)
 # Recuperiamo il token di Telegram dalle variabili d'ambiente di Render
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
-# Database temporaneo in memoria per le note
+# Database temporaneo in memoria per le note (con la nota di benvenuto iniziale)
 note_database = [
     {
         "id": 1,
@@ -19,6 +20,7 @@ note_database = [
 
 @app.route('/')
 def index():
+    # Mostra la pagina web passando le note in ordine cronologico inverso (ultime in cima)
     return render_template('index.html', notes=note_database[::-1])
 
 @app.route('/webhook', methods=['POST'])
@@ -26,18 +28,38 @@ def telegram_webhook():
     data = request.json
     print("Dati ricevuti da Telegram:", data)
     
-    # Verifichiamo se c'è un messaggio
     if "message" in data:
         message = data["message"]
         chat_id = message["chat"]["id"]
         user_name = message["from"].get("first_name", "Operatore")
         
-        # Se un'operatrice manda un testo o un vocale al bot
+        testo_nota = ""
+        
+        # Se l'utente manda un testo
         if "text" in message:
-            text_received = message["text"]
-            invia_messaggio_telegram(chat_id, f"Ciao {user_name}! Ho ricevuto il tuo testo: '{text_received}'")
+            testo_nota = message["text"]
+            
+        # Se l'utente manda un vocale (per ora registriamo la ricezione del vocale in attesa del modulo IA)
         elif "voice" in message:
-            invia_messaggio_telegram(chat_id, f"Ciao {user_name}! Ho ricevuto il tuo vocale. (Presto lo trascriveremo e pubblicheremo sul diario).")
+            testo_nota = "[Messaggio Vocale registrato da équipe]"
+            
+        if testo_nota:
+            # Creiamo la nuova nota da aggiungere al diario
+            data_corrente = datetime.now().strftime("%d/%m/%Y - %H:%M")
+            nuova_nota = {
+                "id": len(note_database) + 1,
+                "operatore": user_name,
+                "data": data_corrente,
+                "testo": testo_nota
+            }
+            
+            # La aggiungiamo al nostro database temporaneo
+            note_database.append(nuova_nota)
+            
+            # Confermiamo all'operatore su Telegram
+            invia_messaggio_telegram(chat_id, f"✅ Nota pubblicata con successo sul diario, {user_name}!")
+        else:
+            invia_messaggio_telegram(chat_id, "Invia un testo o un vocale da aggiungere al diario.")
             
     return jsonify({"status": "ok"})
 
@@ -50,7 +72,6 @@ def invia_messaggio_telegram(chat_id, testo):
 
 @app.route('/set_webhook', methods=['GET'])
 def set_webhook():
-    # Questa pagina collega automaticamente Telegram al nostro sito su Render
     render_url = request.host_url.rstrip('/') + '/webhook'
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url={render_url}"
     response = requests.get(url)

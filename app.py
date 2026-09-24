@@ -19,32 +19,30 @@ def sintetizza_e_formalizza(testo_grezzo):
     if not GEMINI_API_KEY:
         return testo_grezzo
         
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    prompt_sistema = (
-        "Sei un assistente di redazione per un team socio-educativo. "
-        "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
-        "esclusivamente in un paragrafo descrittivo dell'evento o dell'attività svolta, "
-        "scritto con un tono formale e professionale. "
-        "Regole tassative: "
-        "1. Non inserire data, ora, intestazioni, firme o saluti nel testo (verranno aggiunti automaticamente dal sistema). "
-        "2. Non aggiungere frasi di chiusura (es. 'seguiranno aggiornamenti'). "
-        "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
-    )
-    
-    modelli = ["gemini-3.8-flash", "gemini-2.5-flash"]
-    
-    for modello in modelli:
-        try:
-            response = client.models.generate_content(
-                model=modello,
-                contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
-            )
-            if response and response.text:
-                return response.text.strip()
-        except Exception as e:
-            print(f"Tentativo fallito con {modello}: {str(e)}")
-            continue
-            
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        prompt_sistema = (
+            "Sei un assistente di redazione per un team socio-educativo. "
+            "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
+            "esclusivamente in un paragrafo descrittivo dell'evento o dell'attività svolta, "
+            "scritto con un tono formale e professionale. "
+            "Regole tassative: "
+            "1. Non inserire data, ora, intestazioni, firme o saluti nel testo. "
+            "2. Non aggiungere frasi di chiusura (es. 'seguiranno aggiornamenti'). "
+            "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
+        )
+        
+        # Usiamo il modello ufficiale raccomandato
+        response = client.models.generate_content(
+            model="gemini-3.8-flash",
+            contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
+        )
+        
+        if response and response.text:
+            return response.text.strip()
+    except Exception as e:
+        print(f"Errore temporaneo con l'IA (ritorno al testo originale): {str(e)}")
+        
     return testo_grezzo
 
 def leggi_diario_da_github():
@@ -69,7 +67,6 @@ def salva_diario_su_github(testo_nota, autore):
     
     diario_list, sha = leggi_diario_da_github()
     
-    # Registriamo data, ora e autore in modo strutturato
     timestamp = datetime.now().strftime("%d/%m/%Y alle %H:%M")
     entry = {
         "timestamp": timestamp,
@@ -86,7 +83,7 @@ def salva_diario_su_github(testo_nota, autore):
     encoded_content = base64.b64encode(updated_content_bytes).decode('utf-8')
     
     data = {
-        "message": "Aggiunta nota di diario con data, ora e autore",
+        "message": "Aggiunta nota di diario",
         "content": encoded_content,
         "sha": sha
     }
@@ -101,20 +98,16 @@ def webhook():
         chat_id = data['message']['chat']['id']
         testo_grezzo = data['message']['text']
         
-        # Estraiamo il nome o il nickname di chi ha scritto su Telegram
         user_info = data['message'].get('from', {})
         nome = user_info.get('first_name', 'Educatore')
         cognome = user_info.get('last_name', '')
         autore = f"{nome} {cognome}".strip()
         
-        # 1. Sintesi pulita della descrizione
         testo_professionale = sintetizza_e_formalizza(testo_grezzo)
-        
-        # 2. Salvataggio su GitHub includendo autore, data e ora
         successo = salva_diario_su_github(testo_professionale, autore)
         
         if successo:
-            msg_risposta = f"Nota registrata correttamente per le ore {datetime.now().strftime('%H:%M')} da {autore}."
+            msg_risposta = f"Nota registrata correttamente alle {datetime.now().strftime('%H:%M')} da {autore}."
         else:
             msg_risposta = "Errore durante il salvataggio."
             

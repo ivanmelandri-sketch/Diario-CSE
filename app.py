@@ -1,6 +1,6 @@
 import os
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
@@ -8,7 +8,7 @@ app = Flask(__name__)
 # Recuperiamo il token di Telegram dalle variabili d'ambiente di Render
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
-# Database temporaneo in memoria per le note (con la nota di benvenuto iniziale)
+# Database temporaneo in memoria per le note
 note_database = [
     {
         "id": 1,
@@ -20,13 +20,11 @@ note_database = [
 
 @app.route('/')
 def index():
-    # Mostra la pagina web passando le note in ordine cronologico inverso (ultime in cima)
     return render_template('index.html', notes=note_database[::-1])
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
     data = request.json
-    print("Dati ricevuti da Telegram:", data)
     
     if "message" in data:
         message = data["message"]
@@ -35,17 +33,16 @@ def telegram_webhook():
         
         testo_nota = ""
         
-        # Se l'utente manda un testo
         if "text" in message:
             testo_nota = message["text"]
-            
-        # Se l'utente manda un vocale (per ora registriamo la ricezione del vocale in attesa del modulo IA)
         elif "voice" in message:
             testo_nota = "[Messaggio Vocale registrato da équipe]"
             
         if testo_nota:
-            # Creiamo la nuova nota da aggiungere al diario
-            data_corrente = datetime.now().strftime("%d/%m/%Y - %H:%M")
+            # Calcoliamo l'ora italiana corretta (UTC + 2 ore a settembre per l'ora legale)
+            orario_italiano = datetime.now(timezone.utc) + timedelta(hours=2)
+            data_corrente = orario_italiano.strftime("%d/%m/%Y - %H:%M")
+            
             nuova_nota = {
                 "id": len(note_database) + 1,
                 "operatore": user_name,
@@ -53,10 +50,7 @@ def telegram_webhook():
                 "testo": testo_nota
             }
             
-            # La aggiungiamo al nostro database temporaneo
             note_database.append(nuova_nota)
-            
-            # Confermiamo all'operatore su Telegram
             invia_messaggio_telegram(chat_id, f"✅ Nota pubblicata con successo sul diario, {user_name}!")
         else:
             invia_messaggio_telegram(chat_id, "Invia un testo o un vocale da aggiungere al diario.")

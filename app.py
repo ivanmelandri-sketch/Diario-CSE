@@ -14,24 +14,30 @@ FILE_PATH = "diario.json"
 
 def leggi_note_da_github():
     if not GITHUB_TOKEN:
+        print("ATTENZIONE: GITHUB_TOKEN mancante!")
         return [{"id": 1, "operatore": "Sistema", "data": "24/09/2026 - 18:35", "testo": "Avviato il sistema."}]
     
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{FILE_PATH}"
     headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
     response = requests.get(url, headers=headers)
     
+    print(f"GitHub GET risponde con codice: {response.status_code}")
+    
     if response.status_code == 200:
         try:
             file_content = response.json()
             decoded_bytes = base64.b64decode(file_content["content"])
             return json.loads(decoded_bytes.decode("utf-8"))
-        except Exception:
+        except Exception as e:
+            print(f"Errore decodifica JSON da GitHub: {e}")
             return [{"id": 1, "operatore": "Sistema", "data": "24/09/2026 - 18:35", "testo": "Avviato il sistema."}]
     else:
+        print(f"Risposta GitHub GET non ok: {response.text}")
         return [{"id": 1, "operatore": "Sistema", "data": "24/09/2026 - 18:35", "testo": "Avviato il sistema."}]
 
 def salva_nota_su_github(nuova_nota):
     if not GITHUB_TOKEN:
+        print("ATTENZIONE: Impossibile salvare, GITHUB_TOKEN mancante!")
         return
     
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{FILE_PATH}"
@@ -62,7 +68,9 @@ def salva_nota_su_github(nuova_nota):
     if sha:
         payload["sha"] = sha
         
-    requests.put(url, headers=headers, json=payload)
+    put_response = requests.put(url, headers=headers, json=payload)
+    print(f"GitHub PUT (salvataggio) risponde con codice: {put_response.status_code}")
+    print(f"Testo risposta GitHub PUT: {put_response.text}")
 
 @app.route('/')
 def index():
@@ -72,6 +80,7 @@ def index():
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
     data = request.json
+    print("Messaggio ricevuto da Telegram via webhook!")
     
     if "message" in data:
         message = data["message"]

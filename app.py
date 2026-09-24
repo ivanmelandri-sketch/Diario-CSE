@@ -32,7 +32,7 @@ def sintetizza_e_formalizza(testo_grezzo):
         )
         
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.8-flash",
             contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
         )
         

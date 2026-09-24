@@ -14,15 +14,12 @@ FILE_PATH = "diario.json"
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# Memoria temporanea per le bozze in attesa di conferma (chat_id -> testo_nota)
 pending_notes = {}
-# Memoria per tracciare se l'utente ha cliccato "Modifica" (chat_id -> True/False)
 waiting_for_edit = {}
 
 def sintetizza_e_formalizza(testo_grezzo):
     """Usa Google Gemini per estrarre e formalizzare la sola descrizione dell'evento."""
     if not GEMINI_API_KEY:
-        print("GEMINI_API_KEY mancante!")
         return testo_grezzo
         
     try:
@@ -38,9 +35,9 @@ def sintetizza_e_formalizza(testo_grezzo):
             "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
         )
         
-        # Tentativo con il modello standard
+        # Usiamo esattamente il modello richiesto dall'API di Google
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-3.8-flash",
             contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
         )
         
@@ -49,20 +46,8 @@ def sintetizza_e_formalizza(testo_grezzo):
             
     except Exception as e:
         print(f"ERRORE DI GEMINI: {str(e)}")
-        # Tentativo di fallback con il modello di backup se il primo fallisce
-        try:
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            response = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=f"Rendi questo testo formale e professionale, rimuovendo data, ora e saluti:\n{testo_grezzo}"
-            )
-            if response and response.text:
-                return response.text.strip()
-        except Exception as e2:
-            print(f"ERRORE ANCHE NEL FALLBACK: {str(e2)}")
-            
-    # Se tutto fallisce, restituisce comunque una pulizia basilare anziché il testo grezzo identico
-    return testo_grezzo.strip()
+        
+    return testo_grezzo
 
 def leggi_diario_da_github():
     import base64
@@ -114,7 +99,6 @@ def salva_diario_su_github(testo_nota, autore):
 def webhook():
     data = request.json
     
-    # 1. Gestione dei click sui pulsanti interattivi (Callback Query)
     if 'callback_query' in data:
         callback = data['callback_query']
         chat_id = callback['message']['chat']['id']
@@ -138,7 +122,6 @@ def webhook():
             else:
                 risposta_testo = "Nessuna nota in sospeso trovata."
                 
-            # Aggiorna il messaggio Telegram rimuovendo i pulsanti
             requests.post(f"{TELEGRAM_API_URL}/editMessageText", json={
                 "chat_id": chat_id,
                 "message_id": message_id,
@@ -155,7 +138,6 @@ def webhook():
             
         return "OK", 200
 
-    # 2. Gestione dei messaggi di testo normali
     if 'message' in data and 'text' in data['message']:
         chat_id = data['message']['chat']['id']
         testo_ricevuto = data['message']['text']
@@ -165,12 +147,10 @@ def webhook():
         cognome = user_info.get('last_name', '')
         autore = f"{nome} {cognome}".strip() or "Ivan"
 
-        # Se l'utente aveva cliccato "Modifica" e ora sta inviando il testo corretto
         if chat_id in waiting_for_edit and waiting_for_edit[chat_id]:
             waiting_for_edit[chat_id] = False
             pending_notes[chat_id] = testo_ricevuto
             
-            # Rimandiamo la bozza aggiornata con i pulsanti
             keyboard = {
                 "inline_keyboard": [
                     [
@@ -186,11 +166,9 @@ def webhook():
             })
             return "OK", 200
 
-        # Altrimenti, elaboriamo una nuova nota grezza con Gemini
         testo_professionale = sintetizza_e_formalizza(testo_ricevuto)
         pending_notes[chat_id] = testo_professionale
         
-        # Creazione della tastiera con i due pulsanti interattivi
         keyboard = {
             "inline_keyboard": [
                 [

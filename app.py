@@ -1,5 +1,4 @@
 import os
-import time
 import requests
 from flask import Flask, request
 from google import genai
@@ -19,45 +18,35 @@ pending_notes = {}
 waiting_for_edit = {}
 
 def sintetizza_e_formalizza(testo_grezzo):
-    """Usa Google Gemini con tentativi automatici in caso di errore 503 (server sovraccarico)."""
+    """Usa Google Gemini per estrarre e formalizzare la sola descrizione dell'evento."""
     if not GEMINI_API_KEY:
         return "[ERRORE: GEMINI_API_KEY non impostata su Render]"
         
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    
-    prompt_completo = (
-        "Sei un assistente di redazione per un team socio-educativo. "
-        "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
-        "esclusivamente in un paragrafo descrittivo dell'evento o dell'attività svolta, "
-        "scritto con un tono formale e professionale. "
-        "Regole tassative: "
-        "1. Non inserire data, ora, intestazioni, firme o saluti nel testo. "
-        "2. Non aggiungere frasi di chiusura (es. 'seguiranno aggiornamenti'). "
-        "3. Restituisci unicamente il testo della descrizione pulita e sintetica.\n\n"
-        f"Testo da elaborare:\n{testo_grezzo}"
-    )
-    
-    # Tentiamo fino a 3 volte in caso di sovraccarico temporaneo (503)
-    for tentativo in range(3):
-        try:
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt_completo
-            )
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        prompt_sistema = (
+            "Sei un assistente di redazione per un team socio-educativo. "
+            "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
+            "esclusivamente in un paragrafo descrittivo dell'evento o dell'attività svolta, "
+            "scritto con un tono formale e professionale. "
+            "Regole tassative: "
+            "1. Non inserire data, ora, intestazioni, firme o saluti nel testo. "
+            "2. Non aggiungere frasi di chiusura (es. 'seguiranno aggiornamenti'). "
+            "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
+        )
+        
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
+        )
+        
+        if response and hasattr(response, 'text') and response.text:
+            return response.text.strip()
+        else:
+            return "[ERRORE: Risposta vuota da parte del modello]"
             
-            if response and response.text:
-                return response.text.strip()
-                
-        except Exception as e:
-            errore_str = str(e)
-            print(f"Tentativo {tentativo + 1} fallito: {errore_str}")
-            if "503" in errore_str or "UNAVAILABLE" in errore_str:
-                time.sleep(2) # Attende 2 secondi prima di riprovare
-                continue
-            else:
-                return f"[Errore API Gemini: {errore_str}]"
-                 
-    return f"[Nota: I server di Google sono momentaneamente sovraccarichi (503). Testo originale:\n\n{testo_grezzo}]"
+    except Exception as e:
+        return f"[ERRORE GEMINI: {str(e)}]"
 
 def leggi_diario_da_github():
     import base64

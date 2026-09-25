@@ -22,6 +22,11 @@ FILE_PATH = "diario.json"
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
+# Strutture di stato in memoria per la gestione della modifica interattiva
+pending_notes = {}
+waiting_for_edit = {}
+editing_message_id = {}
+
 # Palette colori operatori
 COLORI_OPERATORI = [
     {"bg": "#fffaf0", "border": "#8b5a2b", "meta": "#7f6a55", "line": "#e6d7be"},
@@ -79,7 +84,6 @@ def salva_lista_su_github(diario_list, sha):
 def salva_diario_su_github(testo_nota, autore):
     diario_list, sha = leggi_diario_da_github()
     
-    # Fuso orario italiano corretto (Europe/Rome)
     fuso_italiano = ZoneInfo("Europe/Rome")
     timestamp = datetime.now(fuso_italiano).strftime("%d/%m/%Y alle %H:%M")
     
@@ -313,6 +317,7 @@ def telegram_webhook():
     if not data:
         return jsonify({"status": "ok"}), 200
 
+    # Gestione dei pulsanti interattivi (Callback Query)
     if 'callback_query' in data:
         callback = data['callback_query']
         chat_id = callback['message']['chat']['id']
@@ -324,22 +329,35 @@ def telegram_webhook():
         cognome = user_info.get('last_name', '')
         autore = f"{nome} {cognome}".strip() or "Ivan"
         
-        if data_azione == "save_entry":
-            testo_da_salvare = callback['message'].get('text', '').replace("Bozza elaborata:\n\n", "").replace("Bozza:\n\n", "")
-            
-            successo = salva_diario_su_github(testo_da_salvare, autore)
-            risposta_testo = "Nota pubblicata ufficialmente sulla pergamena! ✨" if successo else "Errore durante il salvataggio."
-            
+        if data_azione == "btn_ok":
+            if chat_id in pending_notes:
+                testo_da_salvare = pending_notes[chat_id]
+                successo = salva_diario_su_github(testo_da_salvare, autore)
+                
+                del pending_notes[chat_id]
+                waiting_for_edit.pop(chat_id, None)
+                editing_message_id.pop(chat_id, None)
+                
+                risposta_testo = "Nota pubblicata ufficialmente sulla pergamena! ✨" if successo else "Errore durante il salvataggio."
+            else:
+                # Fallback se la sessione in memoria è scaduta
+                testo_da_salvare = callback['message'].get('text', '').replace("Bozza elaborata:\n\n", "").replace("Ecco la nota aggiornata:\n\n", "")
+                successo = salva_diario_su_github(testo_da_salvare, autore)
+                risposta_testo = "Nota pubblicata ufficialmente sulla pergamena! ✨" if successo else "Errore durante il salvataggio."
+                
             requests.post(f"{TELEGRAM_API_URL}/editMessageText", json={
                 "chat_id": chat_id,
                 "message_id": message_id,
                 "text": f"✅ {risposta_testo}"
             })
-        elif data_azione == "cancel_entry":
+            
+        elif data_azione == "btn_modifica":
+            waiting_for_edit[chat_id] = True
+            editing_message_id[chat_id] = message_id
             requests.post(f"{TELEGRAM_API_URL}/editMessageText", json={
                 "chat_id": chat_id,
                 "message_id": message_id,
-                "text": "❌ Operazione annullata."
+                "text": "✏️ Scrivi qui sotto il testo modificato che vuoi pubblicare:"
             })
             
         return jsonify({"status": "ok"}), 200
@@ -358,9 +376,57 @@ def telegram_webhook():
             send_telegram_message(chat_id, "Ho ricevuto il messaggio, ma è vuoto.")
             return jsonify({"status": "ok"}), 200
 
-        # Elaborazione IA con il modello 3.8-flash richiesto
+        # Se l'utente era in attesa di inserire il testo modificato
+        if chat_id in waiting_for_edit and waiting_for_edit[chat_id]:
+            waiting_for_edit[chat_id] = False
+            pending_notes[chat_id] = user_text
+            msg_id_da_aggiornare = editing_message_id.get(chat_id)
+            
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "✅ Pubblica (OK)", "callback_data": "btn_ok"},
+                        {"text": "✏️ Modifica (M)", "callback_data": "btn_modifica"}
+                    ]
+                ]
+            }
+            
+            payload_msg = {
+                "chat_id": chat_id,
+                "text": f"Ecco la nota aggiornata:\n\n\"{user_text}\"\n\nCosa vuoi fare?",
+                "reply_markup": keyboard
+            }
+            if msg_id_da_aggiornare:
+                payload_msg["message_id"] = msg_id_da_aggiornare
+                requests.post(f"{TELEGRAM_API_URL}/editMessageText", json=payload_msg)
+            else:
+                requests.post(f"{TELEGRAM_API_URL}/sendMessage", json=payload_msg)
+                
+            return jsonify({"status": "ok"}), 200
+
+        # Elaborazione standard con Gemini (modello gemini-3.8-flash)
         processed_text = process_with_gemini(user_text)
-        send_message_with_buttons(chat_id, processed_text)
+        pending_notes[chat_id] = processed_text
+        
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ Pubblica (OK)", "callback_data": "btn_ok"},
+                    {"text": "✏️ Modifica (M)", "callback_data": "btn_modifica"}
+                ]
+            ]
+        }
+        
+        res = requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={
+            "chat_id": chat_id,
+            "text": f"Bozza elaborata:\n\n\"{processed_text}\"",
+            "reply_markup": keyboard
+        })
+        
+        if res.status_code == 200:
+            res_json = res.json()
+            if 'result' in res_json:
+                editing_message_id[chat_id] = res_json['result']['message_id']
 
     return jsonify({"status": "ok"}), 200
 
@@ -372,15 +438,19 @@ def process_with_gemini(text):
     headers = {"Content-Type": "application/json"}
     
     prompt = (
-        "Sei un assistente professionale per la stesura di un diario di servizio/lavorativo. "
-        "Prendi il seguente testo grezzo e formattalo in modo chiaro, "
-        "strutturato, formale e professionale, correggendo eventuali errori:\n\n"
-        f"{text}"
+        "Sei un assistente di redazione per un team socio-educativo. "
+        "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
+        "esclusivamente in un paragrafo descrittivo dell'evento o dell'attività svolta, "
+        "scritto con un tono formale e professionale. "
+        "Regole tassative: "
+        "1. Non inserire data, ora, intestazioni, firme o saluti nel testo. "
+        "2. Non aggiungere frasi di chiusura (es. 'seguiranno aggiornamenti'). "
+        "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
     )
 
     payload = {
         "contents": [{
-            "parts": [{"text": prompt}]
+            "parts": [{"text": f"{prompt}\n\nTesto da elaborare:\n{text}"}]
         }]
     }
 
@@ -390,33 +460,14 @@ def process_with_gemini(text):
             res_json = response.json()
             return res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
         else:
-            # Fallback in caso di errore API o 429
-            return text
-    except Exception:
-        return text
+            # Se l'API restituisce un errore (es. 429), segnaliamo l'errore nel testo ma non blocchiamo
+            return f"[⚠️ Errore elaborazione IA ({response.status_code}). Testo originale:]\n{text}"
+    except Exception as e:
+        return f"[⚠️ Errore di connessione IA: {str(e)}]\nTesto originale:\n{text}"
 
 def send_telegram_message(chat_id, text):
     url = f"{TELEGRAM_API_URL}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, json=payload)
-
-def send_message_with_buttons(chat_id, text):
-    url = f"{TELEGRAM_API_URL}/sendMessage"
-    
-    keyboard = {
-        "inline_keyboard": [
-            [
-                {"text": "✅ Conferma e Salva", "callback_data": "save_entry"},
-                {"text": "❌ Annulla", "callback_data": "cancel_entry"}
-            ]
-        ]
-    }
-
-    payload = {
-        "chat_id": chat_id,
-        "text": f"Bozza elaborata:\n\n{text}",
-        "reply_markup": keyboard
-    }
     requests.post(url, json=payload)
 
 if __name__ == "__main__":

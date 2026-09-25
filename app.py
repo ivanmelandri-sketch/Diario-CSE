@@ -32,7 +32,7 @@ def save_entries(entries):
 def process_with_gemini(text):
     if not GEMINI_API_KEY:
         print("DEBUG GEMINI: Chiave API mancante!")
-        return text
+        return "⚠️ Errore di configurazione: GEMINI_API_KEY mancante."
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
@@ -68,7 +68,6 @@ def process_with_gemini(text):
                 return res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
             
             elif response.status_code in [429, 503]:
-                # Server sovraccarico, attende prima di riprovare
                 print(f"DEBUG GEMINI: Servizio occupato ({response.status_code}), attendo {retry_delay}s...")
                 if attempt < max_retries:
                     time.sleep(retry_delay)
@@ -83,9 +82,8 @@ def process_with_gemini(text):
                 time.sleep(retry_delay)
                 continue
 
-    # Se falliscono tutti i tentativi, pulisce almeno la formattazione di base del testo originale
-    cleaned = text.strip()
-    return cleaned[0].upper() + cleaned[1:] if cleaned else text
+    # Se falliscono tutti i tentativi, restituisce l'avviso chiaro
+    return "⚠️ Servizio IA momentaneamente sovraccarico. Impossibile elaborare la bozza, riprova tra poco."
 
 # Template HTML della pergamena
 PERGAMENA_HTML = """
@@ -235,23 +233,31 @@ def webhook():
             
         processed_text = process_with_gemini(incoming_text)
         
-        keyboard = {
-            "inline_keyboard": [
-                [
-                    {"text": "✅ Pubblica (OK)", "callback_data": "confirm_ok"},
-                    {"text": "✏️ Modifica (M)", "callback_data": "edit_mode"}
-                ]
-            ]
-        }
-        
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        payload = {
-            "chat_id": chat_id,
-            "text": f"BOZZA ELABORATA:\n\n{processed_text}",
-            "reply_markup": keyboard
-        }
+        
+        # Se c'è un errore dell'IA, invia solo l'avviso senza i bottoni di pubblicazione
+        if processed_text.startswith("⚠️"):
+            payload = {
+                "chat_id": chat_id,
+                "text": processed_text
+            }
+        else:
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "✅ Pubblica (OK)", "callback_data": "confirm_ok"},
+                        {"text": "✏️ Modifica (M)", "callback_data": "edit_mode"}
+                    ]
+                ]
+            }
+            payload = {
+                "chat_id": chat_id,
+                "text": f"BOZZA ELABORATA:\n\n{processed_text}",
+                "reply_markup": keyboard
+            }
+            
         try:
-            res = requests.post(url, json=payload, timeout=30) # Timeout allungato per reggere i retry multipli
+            res = requests.post(url, json=payload, timeout=30)
             print("Risposta invio Telegram:", res.status_code, res.text)
         except Exception as e:
             print("Errore invio Telegram:", str(e))

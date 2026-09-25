@@ -79,7 +79,7 @@ def salva_lista_su_github(diario_list, sha):
 def salva_diario_su_github(testo_nota, autore):
     diario_list, sha = leggi_diario_da_github()
     
-    # 1) Fuso orario italiano corretto
+    # Fuso orario italiano corretto (Europe/Rome)
     fuso_italiano = ZoneInfo("Europe/Rome")
     timestamp = datetime.now(fuso_italiano).strftime("%d/%m/%Y alle %H:%M")
     
@@ -313,7 +313,6 @@ def telegram_webhook():
     if not data:
         return jsonify({"status": "ok"}), 200
 
-    # Gestione dei pulsanti interattivi (Callback Query)
     if 'callback_query' in data:
         callback = data['callback_query']
         chat_id = callback['message']['chat']['id']
@@ -326,8 +325,6 @@ def telegram_webhook():
         autore = f"{nome} {cognome}".strip() or "Ivan"
         
         if data_azione == "save_entry":
-            # Estrae il testo del messaggio originale memorizzato nel testo della chat o gestiamo il salvataggio
-            # Nota: Per semplicità, recuperiamo il testo dal messaggio Telegram
             testo_da_salvare = callback['message'].get('text', '').replace("Bozza elaborata:\n\n", "").replace("Bozza:\n\n", "")
             
             successo = salva_diario_su_github(testo_da_salvare, autore)
@@ -361,6 +358,7 @@ def telegram_webhook():
             send_telegram_message(chat_id, "Ho ricevuto il messaggio, ma è vuoto.")
             return jsonify({"status": "ok"}), 200
 
+        # Elaborazione IA con il modello 3.8-flash richiesto
         processed_text = process_with_gemini(user_text)
         send_message_with_buttons(chat_id, processed_text)
 
@@ -390,10 +388,9 @@ def process_with_gemini(text):
         response = requests.post(url, headers=headers, json=payload, timeout=15)
         if response.status_code == 200:
             res_json = response.json()
-            return res_json["candidates"][0]["content"]["parts"][0]["text"]
-        elif response.status_code == 429:
-            return text  # Fallback automatico in caso di 429
+            return res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
         else:
+            # Fallback in caso di errore API o 429
             return text
     except Exception:
         return text

@@ -58,7 +58,6 @@ def process_with_gemini(text):
             res_json = response.json()
             return res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
         elif response.status_code == 429:
-            # Fallback in caso di 429 (Rate Limit): restituisce il testo formattato senza bloccare il bot
             cleaned = text.strip()
             return cleaned[0].upper() + cleaned[1:] if cleaned else text
         else:
@@ -178,23 +177,24 @@ def index():
 def webhook():
     data = request.get_json()
     
+    if not data:
+        return "OK", 200
+
     # Gestione dei pulsanti inline (callback_query)
     if "callback_query" in data:
         cq = data["callback_query"]
         callback_data = cq.get("data")
-        message = cq.get("message")
-        chat_id = message.get("chat"]["id"]
+        message = cq.get("message", {})
+        chat_id = message.get("chat", {}).get("id")
         message_id = message.get("message_id")
         text_to_save = message.get("text", "").replace("BOZZA ELABORATA:\n\n", "").strip()
         
-        if callback_data == "confirm_ok":
-            # Salva nel diario con data/ora italiana
+        if callback_data == "confirm_ok" and chat_id:
             now_italy = datetime.now(ITALY_TZ).strftime("%d/%m/%Y %H:%M")
             entries = load_entries()
             entries.insert(0, {"timestamp": now_italy, "text": text_to_save})
             save_entries(entries)
             
-            # Aggiorna il messaggio su Telegram rimuovendo i bottoni e confermando
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
             requests.post(url, json={
                 "chat_id": chat_id,
@@ -202,7 +202,7 @@ def webhook():
                 "text": f"✅ PUBBLICATO CON SUCCESSO:\n\n{text_to_save}"
             })
             
-        elif callback_data == "edit_mode":
+        elif callback_data == "edit_mode" and chat_id:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
             requests.post(url, json={
                 "chat_id": chat_id,
@@ -214,16 +214,18 @@ def webhook():
 
     # Gestione messaggi di testo normali
     if "message" in data and "text" in data["message"]:
-        incoming_text = data["message"]["text"]
+        message = data["message"]
+        chat_id = message.get("chat", {}).get("id")
+        incoming_text = message.get("text")
         
-        # Ignora i comandi avviati con /
+        if not chat_id or not incoming_text:
+            return "OK", 200
+            
         if incoming_text.startswith("/"):
             return "OK", 200
             
-        # Elaborazione con Gemini e protezione 429 integrata
         processed_text = process_with_gemini(incoming_text)
         
-        # Invia la bozza con i bottoni interattivi
         keyboard = {
             "inline_keyboard": [
                 [
@@ -233,10 +235,16 @@ def webhook():
             ]
         }
         
-        send_telegram_message(
-            f"BOZZA ELABORATA:\n\n{processed_text}",
-            reply_markup=keyboard
-        )
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": f"BOZZA ELABORATA:\n\n{processed_text}",
+            "reply_markup": keyboard
+        }
+        try:
+            requests.post(url, json=payload, timeout=10)
+        except Exception:
+            pass
 
     return "OK", 200
 

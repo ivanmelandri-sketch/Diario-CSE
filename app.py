@@ -55,7 +55,8 @@ def process_with_gemini(text):
     if not GEMINI_API_KEY:
         return advanced_local_cleaner(text)
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
+    # Utilizziamo gemini-3.5-flash-lite: versione stabile, reattiva e con minor traffico sui server
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     
     prompt = (
@@ -95,7 +96,6 @@ def process_with_gemini(text):
 
     return advanced_local_cleaner(text)
 
-# Template della Pergamena ripristinato con colori per operatore, tasti copia/elimina e Word
 PERGAMENA_HTML = """
 <!DOCTYPE html>
 <html lang="it">
@@ -204,7 +204,6 @@ PERGAMENA_HTML = """
         <h1>Diario Operativo</h1>
         {% if entries %}
             {% for entry in entries %}
-                {# Genera un colore tenue basato sul nome dell'operatore #}
                 {% set colors = ['#fcf8e3', '#d9edf7', '#dff0d8', '#f2dede', '#fcf8e3', '#e8f4f8'] %}
                 {% set color_idx = entry.operator | string | length % colors | length %}
                 <div class="entry" style="background-color: {{ colors[color_idx] }};">
@@ -259,13 +258,11 @@ def webhook():
         message_id = message.get("message_id")
         
         raw_text = message.get("text", "")
-        # Pulisce eventuali prefissi precedenti
-        for prefix in ["BOZZA ELABORATA:\n\n", "✏️ MODIFICA - Invia la correzione:\n\n"]:
+        for prefix in ["BOZZA ELABORATA:\n\n", "✏️ MODIFICA - Invia la correzione o usa questo testo:\n\n"]:
             if raw_text.startswith(prefix):
                 raw_text = raw_text.replace(prefix, "")
         text_to_save = raw_text.strip()
         
-        # Recupera il nome dell'operatore dal mittente del callback o chat
         operator_name = cq.get("from", {}).get("first_name", "Operatore")
         
         if callback_data == "confirm_ok" and chat_id:
@@ -274,7 +271,7 @@ def webhook():
             entries.insert(0, {"timestamp": now_italy, "operator": operator_name, "text": text_to_save})
             save_entries(entries)
             
-            url = f"https://api.telegram.org/bot{TOKEN}/editMessageText" if 'TOKEN' in globals() else f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
             requests.post(url, json={
                 "chat_id": chat_id,
                 "message_id": message_id,
@@ -282,7 +279,6 @@ def webhook():
             })
             
         elif callback_data == "edit_mode" and chat_id:
-            # Mantiene il testo esistente e aggiunge l'invito alla modifica senza cancellare nulla
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
             keyboard = {
                 "inline_keyboard": [

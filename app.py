@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from flask import Flask, request, jsonify
 from datetime import datetime
@@ -16,58 +17,69 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 pending_notes = {}
 waiting_for_edit = {}
 
-# Palette di 7 colori delicati (sfondo e bordo sinistro)
 COLORI_OPERATORI = [
-    {"bg": "#fffaf0", "border": "#8b5a2b", "meta": "#7f6a55", "line": "#e6d7be"},  # 1. Caldo / Terra (es. Ivan)
-    {"bg": "#f0f4f1", "border": "#557a62", "meta": "#435e4d", "line": "#d0dec7"},  # 2. Verde Salvia
-    {"bg": "#f0f3f7", "border": "#546e8a", "meta": "#43566b", "line": "#d1dae6"},  # 3. Azzurro Polvere
-    {"bg": "#f5f0f6", "border": "#7a5482", "meta": "#604266", "line": "#e5d4e8"},  # 4. Lavanda Tenue
-    {"bg": "#f7f3f0", "border": "#9e6b52", "meta": "#7d5541", "line": "#eadeD5"},  # 5. Pesca / Terracotta chiara
-    {"bg": "#f2f2f0", "border": "#6e6d6b", "meta": "#545351", "line": "#dedddb"},  # 6. Grigio Caldo / Tortora
-    {"bg": "#f7f6f0", "border": "#8a7e54", "meta": "#6b6242", "line": "#eae6d1"}   # 7. Giallo Paglierino / Sabbia
+    {"bg": "#fffaf0", "border": "#8b5a2b", "meta": "#7f6a55", "line": "#e6d7be"},  
+    {"bg": "#f0f4f1", "border": "#557a62", "meta": "#435e4d", "line": "#d0dec7"},  
+    {"bg": "#f0f3f7", "border": "#546e8a", "meta": "#43566b", "line": "#d1dae6"},  
+    {"bg": "#f5f0f6", "border": "#7a5482", "meta": "#604266", "line": "#e5d4e8"},  
+    {"bg": "#f7f3f0", "border": "#9e6b52", "meta": "#7d5541", "line": "#eadeD5"},  
+    {"bg": "#f2f2f0", "border": "#6e6d6b", "meta": "#545351", "line": "#dedddb"},  
+    {"bg": "#f7f6f0", "border": "#8a7e54", "meta": "#6b6242", "line": "#eae6d1"}   
 ]
 
 def ottieni_stile_operatore(autore):
-    """Assegna in modo deterministico un colore della palette in base al nome dell'operatore."""
     indice = abs(hash(autore.lower())) % len(COLORI_OPERATORI)
     return COLORI_OPERATORI[indice]
 
 def sintetizza_e_formalizza(testo_grezzo):
-    """Usa l'API REST di Google Gemini con il modello gemini-3.8-flash."""
+    """Usa l'API REST di Google Gemini con tentativi automatici in caso di sovraccarico (503)."""
     if not GEMINI_API_KEY:
         return "[ERRORE: GEMINI_API_KEY non impostata su Render]"
         
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
-        
-        prompt_sistema = (
-            "Sei un assistente di redazione per un team socio-educativo. "
-            "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
-            "esclusivamente in un paragrafo descrittivo dell'evento o dell'attività svolta, "
-            "scritto con un tono formale e professionale. "
-            "Regole tassative: "
-            "1. Non inserire data, ora, intestazioni, firme o saluti nel testo. "
-            "2. Non aggiungere frasi di chiusura (es. 'seguiranno aggiornamenti'). "
-            "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
-        )
-        
-        payload = {
-            "contents": [{
-                "parts": [{"text": f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"}]
-            }]
-        }
-        
-        response = requests.post(url, json=payload)
-        
-        if response.status_code == 200:
-            data = response.json()
-            testo_generato = data['candidates'][0]['content']['parts'][0]['text']
-            return testo_generato.strip()
-        else:
-            return f"[ERRORE API REST ({response.status_code}): {response.text}]"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    prompt_sistema = (
+        "Sei un assistente di redazione per un team socio-educativo. "
+        "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
+        "esclusivamente in un paragrafo descrittivo dell'evento o dell'attività svolta, "
+        "scritto con un tono formale e professionale. "
+        "Regole tassative: "
+        "1. Non inserire data, ora, intestazioni, firme o saluti nel testo. "
+        "2. Non aggiungere frasi di chiusura (es. 'seguiranno aggiornamenti'). "
+        "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
+    )
+    
+    payload = {
+        "contents": [{
+            "parts": [{"text": f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"}]
+        }]
+    }
+    
+    # Tentativi multipli (retry) per superare i picchi di traffico temporanei
+    tentativi = 3
+    for tentativo in range(tentativi):
+        try:
+            response = requests.post(url, json=payload, timeout=15)
             
-    except Exception as e:
-        return f"[ERRORE DI SISTEMA: {str(e)}]"
+            if response.status_code == 200:
+                data = response.json()
+                testo_generato = data['candidates'][0]['content']['parts'][0]['text']
+                return testo_generato.strip()
+            
+            elif response.status_code == 503 and tentativo < tentativi - 1:
+                # Se è sovraccarico, aspetta 2 secondi e riprova
+                time.sleep(2)
+                continue
+            else:
+                return f"[ERRORE API REST ({response.status_code}): {response.text}]"
+                
+        except Exception as e:
+            if tentativo < tentativi - 1:
+                time.sleep(2)
+                continue
+            return f"[ERRORE DI SISTEMA: {str(e)}]"
+            
+    return "[ERRORE: Servizio temporaneamente sovraccarico, riprova tra qualche istante.]"
 
 def leggi_diario_da_github():
     import base64
@@ -206,7 +218,6 @@ def webhook():
         
     return "OK", 200
 
-# Endpoint per configurare la Web App (Manifest)
 @app.route('/manifest.json')
 def manifest():
     return jsonify({
@@ -225,7 +236,6 @@ def manifest():
         ]
     })
 
-# Service Worker minimale per abilitare la PWA
 @app.route('/sw.js')
 def service_worker():
     sw_code = "self.addEventListener('fetch', function(event) {});"

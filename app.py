@@ -39,7 +39,7 @@ def ottieni_stile_operatore(autore):
 
 def sintetizza_e_formalizza(testo_grezzo):
     if not GEMINI_API_KEY:
-        return "[ERRORE: GEMINI_API_KEY non impostata su Render]"
+        return testo_grezzo
         
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     
@@ -60,16 +60,17 @@ def sintetizza_e_formalizza(testo_grezzo):
         }]
     }
     
-    while True:
-        try:
-            response = requests.post(url, json=payload, timeout=20)
-            if response.status_code == 200:
-                data = response.json()
-                testo_generato = data['candidates'][0]['content']['parts'][0]['text']
-                return testo_generato.strip()
-            time.sleep(3)
-        except Exception:
-            time.sleep(3)
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            testo_generato = data['candidates'][0]['content']['parts'][0]['text']
+            return testo_generato.strip()
+        else:
+            return testo_grezzo
+    except Exception as e:
+        print(f"Errore API Gemini: {e}")
+        return testo_grezzo
 
 def leggi_diario_da_github():
     import base64

@@ -20,8 +20,7 @@ waiting_for_edit = {}
 def sintetizza_e_formalizza(testo_grezzo):
     """Usa Google Gemini per estrarre e formalizzare la sola descrizione dell'evento."""
     if not GEMINI_API_KEY:
-        print("ERRORE: GEMINI_API_KEY non configurata nelle variabili d'ambiente.")
-        return "[Errore: Chiave API Gemini mancante]"
+        return "[ERRORE: GEMINI_API_KEY non impostata su Render]"
         
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
@@ -44,11 +43,11 @@ def sintetizza_e_formalizza(testo_grezzo):
         if response and hasattr(response, 'text') and response.text:
             return response.text.strip()
         else:
-            return "[Errore: L'IA ha restituito una risposta vuota]"
+            return "[ERRORE: Risposta vuota da parte del modello]"
             
     except Exception as e:
-        print(f"ERRORE CRITICO NELLA CHIAMATA A GEMINI: {str(e)}")
-        return f"[Errore di elaborazione IA: {str(e)}]"
+        # Restituisce l'errore esatto direttamente su Telegram per diagnostica immediata
+        return f"[ERRORE GEMINI: {str(e)}]"
 
 def leggi_diario_da_github():
     import base64
@@ -213,7 +212,7 @@ def home():
         html += f"""
             <div class="note">
                 <div class="meta">Inserito da {entry.get('autore', 'Ivan')} il {entry.get('timestamp', '')}</div>
-                <div class="text">{entry.get('testo', '')}</div>
+                <div class="text">{entry.get('text', '')}</div>
             </div>
         """
     html += """

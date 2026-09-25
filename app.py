@@ -317,7 +317,6 @@ def telegram_webhook():
     if not data:
         return jsonify({"status": "ok"}), 200
 
-    # Gestione dei pulsanti interattivi (Callback Query)
     if 'callback_query' in data:
         callback = data['callback_query']
         chat_id = callback['message']['chat']['id']
@@ -340,7 +339,6 @@ def telegram_webhook():
                 
                 risposta_testo = "Nota pubblicata ufficialmente sulla pergamena! ✨" if successo else "Errore durante il salvataggio."
             else:
-                # Fallback se la sessione in memoria è scaduta
                 testo_da_salvare = callback['message'].get('text', '').replace("Bozza elaborata:\n\n", "").replace("Ecco la nota aggiornata:\n\n", "")
                 successo = salva_diario_su_github(testo_da_salvare, autore)
                 risposta_testo = "Nota pubblicata ufficialmente sulla pergamena! ✨" if successo else "Errore durante il salvataggio."
@@ -376,7 +374,6 @@ def telegram_webhook():
             send_telegram_message(chat_id, "Ho ricevuto il messaggio, ma è vuoto.")
             return jsonify({"status": "ok"}), 200
 
-        # Se l'utente era in attesa di inserire il testo modificato
         if chat_id in waiting_for_edit and waiting_for_edit[chat_id]:
             waiting_for_edit[chat_id] = False
             pending_notes[chat_id] = user_text
@@ -404,7 +401,7 @@ def telegram_webhook():
                 
             return jsonify({"status": "ok"}), 200
 
-        # Elaborazione standard con Gemini (modello gemini-3.8-flash)
+        # Elaborazione rigorosa con gemini-3.8-flash
         processed_text = process_with_gemini(user_text)
         pending_notes[chat_id] = processed_text
         
@@ -434,6 +431,7 @@ def process_with_gemini(text):
     if not GEMINI_API_KEY:
         return text
 
+    # Usiamo rigorosamente e unicamente gemini-3.8-flash
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     
@@ -444,7 +442,7 @@ def process_with_gemini(text):
         "scritto con un tono formale e professionale. "
         "Regole tassative: "
         "1. Non inserire data, ora, intestazioni, firme o saluti nel testo. "
-        "2. Non aggiungere frasi di chiusura (es. 'seguiranno aggiornamenti'). "
+        "2. Non aggiungere frasi di chiusura. "
         "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
     )
 
@@ -460,8 +458,7 @@ def process_with_gemini(text):
             res_json = response.json()
             return res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
         else:
-            # Se l'API restituisce un errore (es. 429), segnaliamo l'errore nel testo ma non blocchiamo
-            return f"[⚠️ Errore elaborazione IA ({response.status_code}). Testo originale:]\n{text}"
+            return f"[⚠️ Errore IA ({response.status_code}). Testo originale:]\n{text}"
     except Exception as e:
         return f"[⚠️ Errore di connessione IA: {str(e)}]\nTesto originale:\n{text}"
 

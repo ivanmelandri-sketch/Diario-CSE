@@ -85,7 +85,6 @@ def leggi_diario_da_github():
         decoded_bytes = base64.b64decode(content_encoded)
         diario_list = json.loads(decoded_bytes.decode('utf-8'))
         
-        # Aggiunge ID alle note vecchie che non ce l'hanno
         modificato = False
         for entry in diario_list:
             if "id" not in entry:
@@ -93,7 +92,6 @@ def leggi_diario_da_github():
                 modificato = True
         if modificato:
             salva_lista_su_github(diario_list, sha)
-            # Ricarica per avere lo sha aggiornato
             return leggi_diario_da_github()
             
         return diario_list, sha
@@ -136,7 +134,7 @@ def elimina_nota_da_github(nota_id):
     diario_list, sha = leggi_diario_da_github()
     nuovo_diario = [e for e in diario_list if e.get("id") != nota_id]
     if len(nuovo_diario) == len(diario_list):
-        return False  # Non trovata
+        return False
     return salva_lista_su_github(nuovo_diario, sha)
 
 @app.route('/webhook', methods=['POST'])
@@ -247,7 +245,7 @@ def webhook():
 
 @app.route('/elimina/<nota_id>', methods=['POST'])
 def elimina(nota_id):
-    successo = elimina_nota_da_github(nota_id)
+    elimina_nota_da_github(nota_id)
     return redirect('/')
 
 @app.route('/backup.docx')
@@ -255,12 +253,9 @@ def backup_word():
     diario_list, _ = leggi_diario_da_github()
     
     doc = Document()
-    
-    # Titolo
     titolo = doc.add_heading('Diario Digitale CSE', 0)
     titolo.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
-    # Data di esportazione
     fuso = ZoneInfo("Europe/Rome")
     data_export = datetime.now(fuso).strftime("%d/%m/%Y alle %H:%M")
     p = doc.add_paragraph(f"Esportato il {data_export}")
@@ -271,21 +266,16 @@ def backup_word():
         doc.add_paragraph("Nessuna nota presente nel diario.")
     else:
         for entry in diario_list:
-            # Intestazione nota
             meta = doc.add_paragraph()
             run = meta.add_run(f"Inserito da {entry.get('autore', 'Sconosciuto')} il {entry.get('timestamp', '')}")
             run.bold = True
             run.font.size = Pt(11)
             run.font.color.rgb = RGBColor(0x55, 0x44, 0x33)
             
-            # Testo della nota
             testo = doc.add_paragraph(entry.get('testo', ''))
             testo.paragraph_format.space_after = Pt(18)
-            
-            # Linea separatrice
             doc.add_paragraph("─" * 40)
     
-    # Salva in memoria
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
@@ -459,7 +449,6 @@ def home():
             stile = ottieni_stile_operatore(autore)
             nota_id = entry.get('id', '')
             testo = entry.get('testo', '')
-            # Escape per HTML e JavaScript
             testo_html = testo.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
             testo_js = testo.replace('\\', '\\\\').replace("'", "\\'").replace('"', '\\"').replace('\n', '\\n')
             
@@ -478,7 +467,7 @@ def home():
                 </div>
             </div>
             """
-        
+            
     html += """
         </div>
     </body>

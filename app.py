@@ -30,9 +30,10 @@ def save_entries(entries):
 
 def process_with_gemini(text):
     if not GEMINI_API_KEY:
+        print("DEBUG GEMINI: Chiave API mancante!")
         return text
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     
     prompt = (
@@ -54,6 +55,9 @@ def process_with_gemini(text):
 
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=15)
+        print(f"DEBUG GEMINI Status: {response.status_code}")
+        print(f"DEBUG GEMINI Response: {response.text}")
+        
         if response.status_code == 200:
             res_json = response.json()
             return res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -62,25 +66,9 @@ def process_with_gemini(text):
             return cleaned[0].upper() + cleaned[1:] if cleaned else text
         else:
             return text
-    except Exception:
+    except Exception as e:
+        print(f"DEBUG GEMINI Exception: {str(e)}")
         return text
-
-def send_telegram_message(text, parse_mode=None, reply_markup=None):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        return
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": text
-    }
-    if parse_mode:
-        payload["parse_mode"] = parse_mode
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception:
-        pass
 
 # Template HTML della pergamena
 PERGAMENA_HTML = """
@@ -242,9 +230,10 @@ def webhook():
             "reply_markup": keyboard
         }
         try:
-            requests.post(url, json=payload, timeout=10)
-        except Exception:
-            pass
+            res = requests.post(url, json=payload, timeout=10)
+            print("Risposta invio Telegram:", res.status_code, res.text)
+        except Exception as e:
+            print("Errore invio Telegram:", str(e))
 
     return "OK", 200
 

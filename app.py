@@ -16,6 +16,23 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 pending_notes = {}
 waiting_for_edit = {}
 
+# Palette di 7 colori delicati (sfondo e bordo sinistro)
+COLORI_OPERATORI = [
+    {"bg": "#fffaf0", "border": "#8b5a2b", "meta": "#7f6a55", "line": "#e6d7be"},  # 1. Caldo / Terra (es. Ivan)
+    {"bg": "#f0f4f1", "border": "#557a62", "meta": "#435e4d", "line": "#d0dec7"},  # 2. Verde Salvia
+    {"bg": "#f0f3f7", "border": "#546e8a", "meta": "#43566b", "line": "#d1dae6"},  # 3. Azzurro Polvere
+    {"bg": "#f5f0f6", "border": "#7a5482", "meta": "#604266", "line": "#e5d4e8"},  # 4. Lavanda Tenue
+    {"bg": "#f7f3f0", "border": "#9e6b52", "meta": "#7d5541", "line": "#eadeD5"},  # 5. Pesca / Terracotta chiara
+    {"bg": "#f2f2f0", "border": "#6e6d6b", "meta": "#545351", "line": "#dedddb"},  # 6. Grigio Caldo / Tortora
+    {"bg": "#f7f6f0", "border": "#8a7e54", "meta": "#6b6242", "line": "#eae6d1"}   # 7. Giallo Paglierino / Sabbia
+]
+
+def ottieni_stile_operatore(autore):
+    """Assegna in modo deterministico un colore della palette in base al nome dell'operatore."""
+    # Usa l'hash del nome per scegliere sempre lo stesso colore per lo stesso operatore
+    indice = abs(hash(autore.lower())) % len(COLORI_OPERATORI)
+    return COLORI_OPERATORI[indice]
+
 def sintetizza_e_formalizza(testo_grezzo):
     """Usa l'API REST di Google Gemini con il modello gemini-3.8-flash."""
     if not GEMINI_API_KEY:
@@ -182,7 +199,7 @@ def webhook():
             ]
         }
         
-        requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={
+        requests.post(f"{TELEGRAM_API_URL::3000}" if False else f"{TELEGRAM_API_URL}/sendMessage", json={
             "chat_id": chat_id,
             "text": f"Bozza elaborata:\n\n\"{testo_professionale}\"",
             "reply_markup": keyboard
@@ -203,15 +220,8 @@ def home():
         <style>
             body { font-family: Georgia, serif; background: #f4ecd8; color: #2c221e; max-width: 800px; margin: 40px auto; padding: 20px; }
             h1 { text-align: center; border-bottom: 2px solid #bfa181; padding-bottom: 10px; margin-bottom: 30px; }
-            
-            /* Stile predefinito (es. per Ivan) */
-            .note { background: #fffaf0; border-left: 4px solid #8b5a2b; padding: 15px; margin-bottom: 20px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
-            .meta { font-size: 0.85em; color: #7f6a55; margin-bottom: 8px; font-weight: bold; border-bottom: 1px dashed #e6d7be; padding-bottom: 4px; }
+            .note { padding: 15px; margin-bottom: 20px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
             .text { font-size: 1.05em; line-height: 1.5; }
-
-            /* Stile dedicato con colore delicato diverso per gli altri operatori */
-            .note.altro-operatore { background: #f0f4f1; border-left: 4px solid #557a62; }
-            .note.altro-operatore .meta { color: #435e4d; border-bottom: 1px dashed #d0dec7; }
         </style>
     </head>
     <body>
@@ -221,13 +231,13 @@ def home():
     
     for entry in diario_list:
         autore = entry.get('autore', 'Ivan')
-        # Controlla se l'autore è Ivan (o include Ivan) oppure un altro operatore
-        is_ivan = "ivan" in autore.lower()
-        css_class = "note" if is_ivan else "note altro-operatore"
+        stile = ottieni_stile_operatore(autore)
         
         html += f"""
-            <div class="{css_class}">
-                <div class="meta">Inserito da {autore} il {entry.get('timestamp', '')}</div>
+            <div class="note" style="background-color: {stile['bg']}; border-left: 4px solid {stile['border']};">
+                <div style="font-size: 0.85em; color: {stile['meta']}; margin-bottom: 8px; font-weight: bold; border-bottom: 1px dashed {stile['line']}; padding-bottom: 4px;">
+                    Inserito da {autore} il {entry.get('timestamp', '')}
+                </div>
                 <div class="text">{entry.get('testo', '')}</div>
             </div>
         """

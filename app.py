@@ -17,12 +17,12 @@ pending_notes = {}
 waiting_for_edit = {}
 
 def sintetizza_e_formalizza(testo_grezzo):
-    """Usa direttamente l'API REST di Google Gemini per evitare i fallback della libreria Python."""
+    """Usa direttamente l'API REST di Google Gemini con il modello aggiornato."""
     if not GEMINI_API_KEY:
         return "[ERRORE: GEMINI_API_KEY non impostata su Render]"
         
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
         
         prompt_sistema = (
             "Sei un assistente di redazione per un team socio-educativo. "
@@ -45,7 +45,6 @@ def sintetizza_e_formalizza(testo_grezzo):
         
         if response.status_code == 200:
             data = response.json()
-            # Estrazione sicura del testo dalla risposta REST di Gemini
             testo_generato = data['candidates'][0]['content']['parts'][0]['text']
             return testo_generato.strip()
         else:

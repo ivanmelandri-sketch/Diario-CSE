@@ -35,19 +35,20 @@ def sintetizza_e_formalizza(testo_grezzo):
             "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
         )
         
+        # Chiamata pulita e diretta con il modello ufficiale imposto da Google
         response = client.models.generate_content(
-            model="gemini-3.8-flash",
+            model='gemini-3.8-flash',
             contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
         )
         
         if response and hasattr(response, 'text') and response.text:
             return response.text.strip()
         else:
-            return "[ERRORE: Risposta vuota da parte del modello]"
+            return testo_grezzo
             
     except Exception as e:
-        # Restituisce l'errore esatto direttamente su Telegram per diagnostica immediata
-        return f"[ERRORE GEMINI: {str(e)}]"
+        print(f"ERRORE DI GEMINI: {str(e)}")
+        return testo_grezzo
 
 def leggi_diario_da_github():
     import base64
@@ -212,7 +213,7 @@ def home():
         html += f"""
             <div class="note">
                 <div class="meta">Inserito da {entry.get('autore', 'Ivan')} il {entry.get('timestamp', '')}</div>
-                <div class="text">{entry.get('text', '')}</div>
+                <div class="text">{entry.get('testo', '')}</div>
             </div>
         """
     html += """

@@ -31,7 +31,6 @@ COLORI_AUTORI = {
 
 def get_colore_autore(autore):
     """Restituisce un colore delicato basato sul nome dell'autore, con un default neutro."""
-    # Controlla se il nome dell'autore contiene una delle chiavi o usa il default
     for nome_chiave, colore in COLORI_AUTORI.items():
         if nome_chiave.lower() in autore.lower():
             return colore
@@ -96,8 +95,7 @@ def salva_diario_su_github(testo_nota, autore):
     
     diario_list, sha = leggi_diario_da_github()
     
-    # Gestione fuso orario italiano (CET/CEST - gestisce ora legale/solare approssimativamente con UTC+2 o ora locale)
-    # Usiamo un offset fisso di +2 ore per l'ora legale italiana, oppure puoi adattarlo
+    # Fuso orario italiano (gestione ora legale con offset +2)
     fuso_orario_italia = timezone(timedelta(hours=2))
     timestamp = datetime.now(fuso_orario_italia).strftime("%d/%m/%Y alle %H:%M")
     
@@ -227,14 +225,27 @@ def home():
         <title>Diario CSE</title>
         <style>
             body { font-family: Georgia, serif; background: #f4ecd8; color: #2c221e; max-width: 800px; margin: 40px auto; padding: 20px; }
-            h1 { text-align: center; border-bottom: 2px solid #bfa181; padding-bottom: 10px; margin-bottom: 30px; }
+            h1 { text-align: center; border-bottom: 2px solid #bfa181; padding-bottom: 10px; margin-bottom: 15px; }
+            .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+            .btn-aggiorna { background-color: #8b5a2b; color: #fff; border: none; padding: 8px 14px; font-family: Georgia, serif; font-size: 0.9em; border-radius: 4px; cursor: pointer; text-decoration: none; box-shadow: 1px 1px 3px rgba(0,0,0,0.2); }
+            .btn-aggiorna:hover { background-color: #6f4521; }
             .note { border-left: 4px solid #8b5a2b; padding: 15px; margin-bottom: 20px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); border-radius: 4px; }
             .meta { font-size: 0.85em; color: #7f6a55; margin-bottom: 8px; font-weight: bold; border-bottom: 1px dashed #e6d7be; padding-bottom: 4px; }
             .text { font-size: 1.05em; line-height: 1.5; }
         </style>
+        <script>
+            // Aggiorna automaticamente la pagina ogni 30 secondi in background
+            setTimeout(function(){
+                location.reload();
+            }, 30000);
+        </script>
     </head>
     <body>
         <h1>Diario Digitale CSE</h1>
+        <div class="header-bar">
+            <span style="font-size: 0.9em; color: #7f6a55; font-style: italic;">Aggiornamento in tempo reale attivo</span>
+            <a href="javascript:location.reload();" class="btn-aggiorna">🔄 Aggiorna ora</a>
+        </div>
         <div id="notes-container">
     """
     for entry in diario_list:

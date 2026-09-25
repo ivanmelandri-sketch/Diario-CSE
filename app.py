@@ -9,9 +9,7 @@ import requests
 
 app = Flask(__name__)
 
-# Configurazioni token e chiavi dalle variabili d'ambiente di Render
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 DATA_FILE = "diario.json"
@@ -33,46 +31,28 @@ def save_entries(entries):
 def advanced_local_cleaner(text):
     if not text:
         return ""
-    
-    # 1. Normalizza gli spazi iniziali/finali e i ritorni a capo
     cleaned = re.sub(r'\s+', ' ', text).strip()
-    
     if not cleaned:
         return ""
-
-    # 2. Rimuove formule introduttive tipiche del parlato all'inizio della frase
     intro_pattern = r'^(allora|dunque|praticamente|insomma|cioè|aspetta|fammi pensare|dunque fammi pensare)[\s,]+'
     cleaned = re.sub(intro_pattern, '', cleaned, flags=re.IGNORECASE)
-
-    # 3. Rimuove onomatopee e intercalari isolati (es. ehhh, ahhhh, ehm, mmh)
     interjections_pattern = r'\b(eh+|ah+|ehm+|mmh+|boh|mah|oh+)\b'
     cleaned = re.sub(interjections_pattern, '', cleaned, flags=re.IGNORECASE)
-
-    # 4. Censura di base per le parolacce (sostituisce con asterischi educati)
     bad_words = ['cazzo', 'merda', 'stronzo', 'stronza', 'vaffanculo', 'coglione', 'pirla', 'idiota', 'fanculo']
     for bw in bad_words:
         pattern = r'\b' + bw + r'\b'
         replacement = lambda m: m.group(0)[0] + '*' * (len(m.group(0)) - 2) + m.group(0)[-1] if len(m.group(0)) > 2 else '***'
         cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
-
-    # 5. Pulizia finale di eventuali spazi multipli rimasti vuoti dopo i tagli
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    
     if not cleaned:
         return text.strip()
-
-    # 6. Regola la maiuscola iniziale
     cleaned = cleaned[0].upper() + cleaned[1:]
-
-    # 7. Aggiunge il punto finale se manca
     if cleaned[-1] not in ['.', '!', '?']:
         cleaned += '.'
-
     return cleaned
 
 def process_with_gemini(text):
     if not GEMINI_API_KEY:
-        print("DEBUG GEMINI: Chiave API mancante, uso pulizia locale.")
         return advanced_local_cleaner(text)
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
@@ -90,44 +70,32 @@ def process_with_gemini(text):
     )
 
     payload = {
-        "contents": [{
-            "parts": [{"text": f"{prompt}\n\nTesto da elaborare:\n{text}"}]
-        }]
+        "contents": [{"parts": [{"text": f"{prompt}\n\nTesto da elaborare:\n{text}"}]}]
     }
 
-    # Tentativi multipli robusti: 10 tentativi ogni 3 secondi
     max_retries = 10
     retry_delay = 3
 
     for attempt in range(1, max_retries + 1):
         try:
             response = requests.post(url, headers=headers, json=payload, timeout=15)
-            print(f"DEBUG GEMINI [Tentativo {attempt}/{max_retries}] Status: {response.status_code}")
-            
             if response.status_code == 200:
                 res_json = response.json()
                 return res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-            
             elif response.status_code in [429, 503]:
-                print(f"DEBUG GEMINI: Servizio occupato ({response.status_code}), attendo {retry_delay}s...")
                 if attempt < max_retries:
                     time.sleep(retry_delay)
                     continue
             else:
-                print(f"DEBUG GEMINI Response error: {response.text}")
                 break
-                
-        except Exception as e:
-            print(f"DEBUG GEMINI Exception [Tentativo {attempt}]: {str(e)}")
+        except Exception:
             if attempt < max_retries:
                 time.sleep(retry_delay)
                 continue
 
-    # Se falliscono tutti i 10 tentativi, interviene la pulizia locale avanzata
-    print("DEBUG: IA non disponibile dopo 10 tentativi, attivazione pulizia locale avanzata.")
     return advanced_local_cleaner(text)
 
-# Template HTML della pergamena
+# Template della Pergamena ripristinato con colori per operatore, tasti copia/elimina e Word
 PERGAMENA_HTML = """
 <!DOCTYPE html>
 <html lang="it">
@@ -143,7 +111,7 @@ PERGAMENA_HTML = """
             padding: 20px;
         }
         .container {
-            max-width: 800px;
+            max-width: 850px;
             margin: 0 auto;
             background: #fff8eb;
             border: 2px solid #d4c3a3;
@@ -160,22 +128,54 @@ PERGAMENA_HTML = """
         }
         .entry {
             margin-bottom: 25px;
-            padding-bottom: 20px;
-            border-bottom: 1px dashed #d4c3a3;
+            padding: 20px;
+            border-radius: 6px;
+            border: 1px solid rgba(0,0,0,0.08);
+            position: relative;
         }
         .entry-meta {
             font-size: 0.85em;
-            color: #7f6e62;
-            margin-bottom: 5px;
+            color: #555;
+            margin-bottom: 10px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
         }
         .entry-content {
-            font-size: 1.1em;
+            font-size: 1.05em;
             line-height: 1.6;
             white-space: pre-wrap;
+            margin-bottom: 15px;
+        }
+        .entry-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .btn-small {
+            background-color: #8b5a2b;
+            color: white;
+            border: none;
+            padding: 5px 12px;
+            font-size: 0.85em;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn-small:hover {
+            background-color: #5c4033;
+        }
+        .btn-delete {
+            background-color: #a94442;
+        }
+        .btn-delete:hover {
+            background-color: #761c19;
         }
         .actions {
             text-align: center;
             margin-top: 30px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
         }
         .btn {
             background-color: #8b5a2b;
@@ -190,15 +190,33 @@ PERGAMENA_HTML = """
             background-color: #5c4033;
         }
     </style>
+    <script>
+        function copyText(id) {
+            const text = document.getElementById('content-' + id).innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Testo copiato negli appunti!');
+            });
+        }
+    </script>
 </head>
 <body>
     <div class="container">
         <h1>Diario Operativo</h1>
         {% if entries %}
             {% for entry in entries %}
-                <div class="entry">
-                    <div class="entry-meta">📅 {{ entry.timestamp }}</div>
-                    <div class="entry-content">{{ entry.text }}</div>
+                {# Genera un colore tenue basato sul nome dell'operatore #}
+                {% set colors = ['#fcf8e3', '#d9edf7', '#dff0d8', '#f2dede', '#fcf8e3', '#e8f4f8'] %}
+                {% set color_idx = entry.operator | string | length % colors | length %}
+                <div class="entry" style="background-color: {{ colors[color_idx] }};">
+                    <div class="entry-meta">
+                        <span>👤 <b>{{ entry.operator }}</b></span>
+                        <span>📅 {{ entry.timestamp }}</span>
+                    </div>
+                    <div class="entry-content" id="content-{{ loop.index0 }}">{{ entry.text }}</div>
+                    <div class="entry-actions">
+                        <button class="btn-small" onclick="copyText('{{ loop.index0 }}')">Copia</button>
+                        <a href="/delete/{{ loop.index0 }}" class="btn-small btn-delete" onclick="return confirm('Eliminare questa voce?');">Elimina</a>
+                    </div>
                 </div>
             {% endfor %}
         {% else %}
@@ -206,6 +224,7 @@ PERGAMENA_HTML = """
         {% endif %}
         
         <div class="actions">
+            <a href="/export-word" class="btn">Scarica Backup (.doc)</a>
             <a href="/export" class="btn">Scarica Backup (.txt)</a>
         </div>
     </div>
@@ -218,14 +237,20 @@ def index():
     entries = load_entries()
     return render_template_string(PERGAMENA_HTML, entries=entries)
 
+@app.route("/delete/<int:index>")
+def delete_entry(index):
+    entries = load_entries()
+    if 0 <= index < len(entries):
+        entries.pop(index)
+        save_entries(entries)
+    return redirect(url_for('index'))
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-    
     if not data:
         return "OK", 200
 
-    # Gestione dei pulsanti inline (callback_query)
     if "callback_query" in data:
         cq = data["callback_query"]
         callback_data = cq.get("data")
@@ -234,38 +259,50 @@ def webhook():
         message_id = message.get("message_id")
         
         raw_text = message.get("text", "")
-        while "BOZZA ELABORATA:\n\n" in raw_text:
-            raw_text = raw_text.replace("BOZZA ELABORATA:\n\n", "")
+        # Pulisce eventuali prefissi precedenti
+        for prefix in ["BOZZA ELABORATA:\n\n", "✏️ MODIFICA - Invia la correzione:\n\n"]:
+            if raw_text.startswith(prefix):
+                raw_text = raw_text.replace(prefix, "")
         text_to_save = raw_text.strip()
+        
+        # Recupera il nome dell'operatore dal mittente del callback o chat
+        operator_name = cq.get("from", {}).get("first_name", "Operatore")
         
         if callback_data == "confirm_ok" and chat_id:
             now_italy = datetime.now(ITALY_TZ).strftime("%d/%m/%Y %H:%M")
             entries = load_entries()
-            entries.insert(0, {"timestamp": now_italy, "text": text_to_save})
+            entries.insert(0, {"timestamp": now_italy, "operator": operator_name, "text": text_to_save})
             save_entries(entries)
             
-            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
+            url = f"https://api.telegram.org/bot{TOKEN}/editMessageText" if 'TOKEN' in globals() else f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
             requests.post(url, json={
                 "chat_id": chat_id,
                 "message_id": message_id,
-                "text": f"✅ PUBBLICATO CON SUCCESSO:\n\n{text_to_save}"
+                "text": f"✅ PUBBLICATO CON SUCCESSO DA {operator_name.upper()}:\n\n{text_to_save}"
             })
             
         elif callback_data == "edit_mode" and chat_id:
+            # Mantiene il testo esistente e aggiunge l'invito alla modifica senza cancellare nulla
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "✅ Conferma Testo Modificato", "callback_data": "confirm_ok"}]
+                ]
+            }
             requests.post(url, json={
                 "chat_id": chat_id,
                 "message_id": message_id,
-                "text": f"✏️ MODIFICA:\n\nInvia la versione corretta del testo come messaggio."
+                "text": f"✏️ MODIFICA - Invia la correzione o usa questo testo:\n\n{text_to_save}",
+                "reply_markup": keyboard
             })
             
         return "OK", 200
 
-    # Gestione messaggi di testo normali
     if "message" in data and "text" in data["message"]:
         message = data["message"]
         chat_id = message.get("chat", {}).get("id")
         incoming_text = message.get("text")
+        operator_name = message.get("from", {}).get("first_name", "Operatore")
         
         if not chat_id or not incoming_text:
             return "OK", 200
@@ -291,20 +328,35 @@ def webhook():
             "reply_markup": keyboard
         }
         try:
-            # Timeout allungato a 40s per reggere tutti i tentativi multipli verso l'API
-            res = requests.post(url, json=payload, timeout=40)
-            print("Risposta invio Telegram:", res.status_code, res.text)
-        except Exception as e:
-            print("Errore invio Telegram:", str(e))
+            requests.post(url, json=payload, timeout=40)
+        except Exception:
+            pass
 
     return "OK", 200
+
+@app.route("/export-word")
+def export_word():
+    entries = load_entries()
+    html_content = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>"
+    html_content += "<head><meta charset='utf-8'><title>Diario Operativo</title></head><body>"
+    html_content += "<h1>Diario Operativo - Backup</h1>"
+    for entry in entries:
+        html_content += f"<p><b>Operatore:</b> {entry.get('operator', 'N/D')} | <b>Data:</b> {entry['timestamp']}</p>"
+        html_content += f"<p>{entry['text']}</p><hr/>"
+    html_content += "</body></html>"
+    
+    export_path = "backup_diario.doc"
+    with open(export_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+        
+    return send_file(export_path, as_attachment=True, download_name="diario_operativo.doc")
 
 @app.route("/export")
 def export():
     entries = load_entries()
     content = ""
     for entry in entries:
-        content += f"[{entry['timestamp']}]\n{entry['text']}\n\n" + "-"*40 + "\n\n"
+        content += f"[{entry['timestamp']}] - Operatore: {entry.get('operator', 'N/D')}\n{entry['text']}\n\n" + "-"*40 + "\n\n"
     
     export_path = "backup_diario.txt"
     with open(export_path, "w", encoding="utf-8") as f:

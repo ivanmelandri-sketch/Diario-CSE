@@ -1,7 +1,6 @@
 import os
 import requests
 from flask import Flask, request
-from google import genai
 from datetime import datetime
 
 app = Flask(__name__)
@@ -18,12 +17,13 @@ pending_notes = {}
 waiting_for_edit = {}
 
 def sintetizza_e_formalizza(testo_grezzo):
-    """Usa Google Gemini per estrarre e formalizzare la sola descrizione dell'evento."""
+    """Usa direttamente l'API REST di Google Gemini per evitare i fallback della libreria Python."""
     if not GEMINI_API_KEY:
         return "[ERRORE: GEMINI_API_KEY non impostata su Render]"
         
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        
         prompt_sistema = (
             "Sei un assistente di redazione per un team socio-educativo. "
             "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
@@ -35,18 +35,24 @@ def sintetizza_e_formalizza(testo_grezzo):
             "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
         )
         
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
-        )
+        payload = {
+            "contents": [{
+                "parts": [{"text": f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"}]
+            }]
+        }
         
-        if response and hasattr(response, 'text') and response.text:
-            return response.text.strip()
+        response = requests.post(url, json=payload)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Estrazione sicura del testo dalla risposta REST di Gemini
+            testo_generato = data['candidates'][0]['content']['parts'][0]['text']
+            return testo_generato.strip()
         else:
-            return "[ERRORE: Risposta vuota da parte del modello]"
+            return f"[ERRORE API REST ({response.status_code}): {response.text}]"
             
     except Exception as e:
-        return f"[ERRORE GEMINI: {str(e)}]"
+        return f"[ERRORE DI SISTEMA: {str(e)}]"
 
 def leggi_diario_da_github():
     import base64

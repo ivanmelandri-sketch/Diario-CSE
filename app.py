@@ -1,6 +1,6 @@
 import os
 import requests
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from datetime import datetime
 
 app = Flask(__name__)
@@ -29,7 +29,6 @@ COLORI_OPERATORI = [
 
 def ottieni_stile_operatore(autore):
     """Assegna in modo deterministico un colore della palette in base al nome dell'operatore."""
-    # Usa l'hash del nome per scegliere sempre lo stesso colore per lo stesso operatore
     indice = abs(hash(autore.lower())) % len(COLORI_OPERATORI)
     return COLORI_OPERATORI[indice]
 
@@ -199,13 +198,38 @@ def webhook():
             ]
         }
         
-        requests.post(f"{TELEGRAM_API_URL::3000}" if False else f"{TELEGRAM_API_URL}/sendMessage", json={
+        requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={
             "chat_id": chat_id,
             "text": f"Bozza elaborata:\n\n\"{testo_professionale}\"",
             "reply_markup": keyboard
         })
         
     return "OK", 200
+
+# Endpoint per configurare la Web App (Manifest)
+@app.route('/manifest.json')
+def manifest():
+    return jsonify({
+        "name": "Diario Digitale CSE",
+        "short_name": "Diario CSE",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#f4ecd8",
+        "theme_color": "#8b5a2b",
+        "icons": [
+            {
+                "src": "https://img.icons8.com/color/192/48/journal.png",
+                "sizes": "192x192",
+                "type": "image/png"
+            }
+        ]
+    })
+
+# Service Worker minimale per abilitare la PWA
+@app.route('/sw.js')
+def service_worker():
+    sw_code = "self.addEventListener('fetch', function(event) {});"
+    return sw_code, 200, {'Content-Type': 'application/javascript'}
 
 @app.route('/')
 def home():
@@ -216,13 +240,24 @@ def home():
     <html lang="it">
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Diario CSE</title>
+        <link rel="manifest" href="/manifest.json">
+        <meta name="theme-color" content="#8b5a2b">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="Diario CSE">
         <style>
-            body { font-family: Georgia, serif; background: #f4ecd8; color: #2c221e; max-width: 800px; margin: 40px auto; padding: 20px; }
+            body { font-family: Georgia, serif; background: #f4ecd8; color: #2c221e; max-width: 800px; margin: 0 auto; padding: 20px; }
             h1 { text-align: center; border-bottom: 2px solid #bfa181; padding-bottom: 10px; margin-bottom: 30px; }
-            .note { padding: 15px; margin-bottom: 20px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
+            .note { padding: 15px; margin-bottom: 20px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); border-radius: 4px; }
             .text { font-size: 1.05em; line-height: 1.5; }
         </style>
+        <script>
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js');
+            }
+        </script>
     </head>
     <body>
         <h1>Diario Digitale CSE</h1>

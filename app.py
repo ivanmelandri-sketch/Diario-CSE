@@ -3,6 +3,7 @@ import time
 import requests
 from flask import Flask, request, jsonify
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 app = Flask(__name__)
 
@@ -17,17 +18,19 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 pending_notes = {}
 waiting_for_edit = {}
 
+# Palette di 7 colori delicati (sfondo e bordo sinistro)
 COLORI_OPERATORI = [
-    {"bg": "#fffaf0", "border": "#8b5a2b", "meta": "#7f6a55", "line": "#e6d7be"},  
-    {"bg": "#f0f4f1", "border": "#557a62", "meta": "#435e4d", "line": "#d0dec7"},  
-    {"bg": "#f0f3f7", "border": "#546e8a", "meta": "#43566b", "line": "#d1dae6"},  
-    {"bg": "#f5f0f6", "border": "#7a5482", "meta": "#604266", "line": "#e5d4e8"},  
-    {"bg": "#f7f3f0", "border": "#9e6b52", "meta": "#7d5541", "line": "#eadeD5"},  
-    {"bg": "#f2f2f0", "border": "#6e6d6b", "meta": "#545351", "line": "#dedddb"},  
-    {"bg": "#f7f6f0", "border": "#8a7e54", "meta": "#6b6242", "line": "#eae6d1"}   
+    {"bg": "#fffaf0", "border": "#8b5a2b", "meta": "#7f6a55", "line": "#e6d7be"},  # 1. Caldo / Terra
+    {"bg": "#f0f4f1", "border": "#557a62", "meta": "#435e4d", "line": "#d0dec7"},  # 2. Verde Salvia
+    {"bg": "#f0f3f7", "border": "#546e8a", "meta": "#43566b", "line": "#d1dae6"},  # 3. Azzurro Polvere
+    {"bg": "#f5f0f6", "border": "#7a5482", "meta": "#604266", "line": "#e5d4e8"},  # 4. Lavanda Tenue
+    {"bg": "#f7f3f0", "border": "#9e6b52", "meta": "#7d5541", "line": "#eadeD5"},  # 5. Pesca / Terracotta chiara
+    {"bg": "#f2f2f0", "border": "#6e6d6b", "meta": "#545351", "line": "#dedddb"},  # 6. Grigio Caldo / Tortora
+    {"bg": "#f7f6f0", "border": "#8a7e54", "meta": "#6b6242", "line": "#eae6d1"}   # 7. Giallo Paglierino / Sabbia
 ]
 
 def ottieni_stile_operatore(autore):
+    """Assegna in modo deterministico un colore della palette in base al nome dell'operatore."""
     indice = abs(hash(autore.lower())) % len(COLORI_OPERATORI)
     return COLORI_OPERATORI[indice]
 
@@ -55,7 +58,6 @@ def sintetizza_e_formalizza(testo_grezzo):
         }]
     }
     
-    # Tentativi multipli (retry) per superare i picchi di traffico temporanei
     tentativi = 3
     for tentativo in range(tentativi):
         try:
@@ -67,7 +69,6 @@ def sintetizza_e_formalizza(testo_grezzo):
                 return testo_generato.strip()
             
             elif response.status_code == 503 and tentativo < tentativi - 1:
-                # Se è sovraccarico, aspetta 2 secondi e riprova
                 time.sleep(2)
                 continue
             else:
@@ -103,7 +104,10 @@ def salva_diario_su_github(testo_nota, autore):
     
     diario_list, sha = leggi_diario_da_github()
     
-    timestamp = datetime.now().strftime("%d/%m/%Y alle %H:%M")
+    # Gestione fuso orario italiano esatto
+    fuso_italiano = ZoneInfo("Europe/Rome")
+    timestamp = datetime.now(fuso_italiano).strftime("%d/%m/%Y alle %H:%M")
+    
     entry = {
         "timestamp": timestamp,
         "autore": autore,

@@ -4,8 +4,8 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Recupera le credenziali dalle variabili d'ambiente di Render
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+# Usiamo TELEGRAM_TOKEN per coerenza
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
@@ -24,35 +24,31 @@ def telegram_webhook():
     message = data["message"]
     chat_id = message["chat"]["id"]
     
-    # Estrae il testo del messaggio (o la didascalia se è un media)
     user_text = message.get("text") or message.get("caption", "")
 
     if not user_text:
-        send_telegram_message(chat_id, "Ho ricevuto il messaggio, ma è vuoto o non contiene testo leggibile.")
+        send_telegram_message(chat_id, "Ho ricevuto il messaggio, ma è vuoto.")
         return jsonify({"status": "ok"}), 200
 
-    # Elaborazione tramite Gemini (usando gemini-3.8-flash)
+    # Elaborazione tramite Gemini con gestione del limite 429
     processed_text = process_with_gemini(user_text)
 
-    # Invio del risultato su Telegram con i pulsanti di conferma/modifica
+    # Invio del risultato su Telegram con i pulsanti
     send_message_with_buttons(chat_id, processed_text)
 
     return jsonify({"status": "ok"}), 200
 
 def process_with_gemini(text):
     if not GEMINI_API_KEY:
-        # Fallback se la chiave non è configurata
-        return f"[Modalità Fallback - Chiave mancante]\n\n{text}"
+        return text
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
-    
     headers = {"Content-Type": "application/json"}
     
-    # Prompt di sistema / istruzioni per la formattazione
     prompt = (
         "Sei un assistente professionale per la stesura di un diario di servizio/lavorativo. "
-        "Prendi il seguente testo grezzo (dettato o appuntato) e formattalo in modo chiaro, "
-        "strutturato, formale e professionale, correggendo eventuali errori di trascrizione:\n\n"
+        "Prendi il seguente testo grezzo e formattalo in modo chiaro, "
+        "strutturato, formale e professionale, correggendo eventuali errori:\n\n"
         f"{text}"
     )
 
@@ -66,9 +62,10 @@ def process_with_gemini(text):
         response = requests.post(url, headers=headers, json=payload, timeout=15)
         if response.status_code == 200:
             res_json = response.json()
-            # Estrae la risposta generata da Gemini
-            ai_text = res_json["candidates"][0]["content"]["parts"][0]["text"]
-            return ai_text
+            return res_json["candidates"][0]["content"]["parts"][0]["text"]
+        elif response.status_code == 429:
+            # Errore 429: Troppe richieste, usiamo il testo originale come fallback
+            return f"[⚠️ Limite richieste Gemini esaurito - Errore 429. Testo originale salvato]\n\n{text}"
         else:
             return f"[Errore API Gemini: {response.status_code}]\n\n{text}"
     except Exception as e:
@@ -76,16 +73,12 @@ def process_with_gemini(text):
 
 def send_telegram_message(chat_id, text):
     url = f"{TELEGRAM_API_URL}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text
-    }
+    payload = {"chat_id": chat_id, "text": text}
     requests.post(url, json=payload)
 
 def send_message_with_buttons(chat_id, text):
     url = f"{TELEGRAM_API_URL}/sendMessage"
     
-    # Inline keyboard con i pulsanti di gestione bozza
     keyboard = {
         "inline_keyboard": [
             [
@@ -100,7 +93,7 @@ def send_message_with_buttons(chat_id, text):
 
     payload = {
         "chat_id": chat_id,
-        "text": f"<b>Bozza elaborata:</b>\n\n{text}",
+        "text": f"<b>Bozza:</b>\n\n{text}",
         "parse_mode": "HTML",
         "reply_markup": keyboard
     }

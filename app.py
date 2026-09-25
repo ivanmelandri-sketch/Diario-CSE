@@ -1,7 +1,7 @@
 import os
 import requests
 from flask import Flask, request
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 app = Flask(__name__)
 
@@ -15,6 +15,27 @@ TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 pending_notes = {}
 waiting_for_edit = {}
+
+# Mappa dei colori delicati (stile pastello/pergamena) associati agli autori
+# Puoi aggiungere o modificare i nomi delle colleghe qui sotto
+COLORI_AUTORI = {
+    "Ivan": "#fffaf0",       # Avorio classico
+    "Chiara": "#f4f1ea",     # Grigio perla caldo
+    "Sara": "#f4eae2",       # Rosa cipria molto tenue
+    "Aurora": "#eaf2f4",     # Azzurro carta da zucchero chiaro
+    "Elisa": "#eef4ea",      # Verde salvia chiaro
+    "Giorgia": "#f4f2ea",    # Sabbia delicato
+    "Carmen": "#f4eae8",     # Pesca pastello
+    "Adi": "#eaeef4"         # Lavanda tenue
+}
+
+def get_colore_autore(autore):
+    """Restituisce un colore delicato basato sul nome dell'autore, con un default neutro."""
+    # Controlla se il nome dell'autore contiene una delle chiavi o usa il default
+    for nome_chiave, colore in COLORI_AUTORI.items():
+        if nome_chiave.lower() in autore.lower():
+            return colore
+    return "#fffaf0" # Colore di fallback se il nome non è in lista
 
 def sintetizza_e_formalizza(testo_grezzo):
     """Usa direttamente l'API REST di Google Gemini con il modello aggiornato."""
@@ -75,7 +96,11 @@ def salva_diario_su_github(testo_nota, autore):
     
     diario_list, sha = leggi_diario_da_github()
     
-    timestamp = datetime.now().strftime("%d/%m/%Y alle %H:%M")
+    # Gestione fuso orario italiano (CET/CEST - gestisce ora legale/solare approssimativamente con UTC+2 o ora locale)
+    # Usiamo un offset fisso di +2 ore per l'ora legale italiana, oppure puoi adattarlo
+    fuso_orario_italia = timezone(timedelta(hours=2))
+    timestamp = datetime.now(fuso_orario_italia).strftime("%d/%m/%Y alle %H:%M")
+    
     entry = {
         "timestamp": timestamp,
         "autore": autore,
@@ -110,9 +135,9 @@ def webhook():
         data_azione = callback['data']
         
         user_info = callback.get('from', {})
-        nome = user_info.get('first_name', 'Ivan')
+        nome = user_info.get('first_name', 'Educatrice/Educatore')
         cognome = user_info.get('last_name', '')
-        autore = f"{nome} {cognome}".strip() or "Ivan"
+        autore = f"{nome} {cognome}".strip() or "Staff"
         
         if data_azione == "btn_ok":
             if chat_id in pending_notes:
@@ -147,9 +172,9 @@ def webhook():
         testo_ricevuto = data['message']['text']
         
         user_info = data['message'].get('from', {})
-        nome = user_info.get('first_name', 'Ivan')
+        nome = user_info.get('first_name', 'Educatrice/Educatore')
         cognome = user_info.get('last_name', '')
-        autore = f"{nome} {cognome}".strip() or "Ivan"
+        autore = f"{nome} {cognome}".strip() or "Staff"
 
         if chat_id in waiting_for_edit and waiting_for_edit[chat_id]:
             waiting_for_edit[chat_id] = False
@@ -203,7 +228,7 @@ def home():
         <style>
             body { font-family: Georgia, serif; background: #f4ecd8; color: #2c221e; max-width: 800px; margin: 40px auto; padding: 20px; }
             h1 { text-align: center; border-bottom: 2px solid #bfa181; padding-bottom: 10px; margin-bottom: 30px; }
-            .note { background: #fffaf0; border-left: 4px solid #8b5a2b; padding: 15px; margin-bottom: 20px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); }
+            .note { border-left: 4px solid #8b5a2b; padding: 15px; margin-bottom: 20px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05); border-radius: 4px; }
             .meta { font-size: 0.85em; color: #7f6a55; margin-bottom: 8px; font-weight: bold; border-bottom: 1px dashed #e6d7be; padding-bottom: 4px; }
             .text { font-size: 1.05em; line-height: 1.5; }
         </style>
@@ -213,9 +238,11 @@ def home():
         <div id="notes-container">
     """
     for entry in diario_list:
+        autore_nota = entry.get('autore', 'Ivan')
+        colore_sfondo = get_colore_autore(autore_nota)
         html += f"""
-            <div class="note">
-                <div class="meta">Inserito da {entry.get('autore', 'Ivan')} il {entry.get('timestamp', '')}</div>
+            <div class="note" style="background-color: {colore_sfondo};">
+                <div class="meta">Inserito da {autore_nota} il {entry.get('timestamp', '')}</div>
                 <div class="text">{entry.get('testo', '')}</div>
             </div>
         """

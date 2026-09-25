@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from datetime import datetime
 import pytz
 from flask import Flask, render_template_string, request, redirect, url_for, send_file
@@ -53,23 +54,38 @@ def process_with_gemini(text):
         }]
     }
 
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
-        print(f"DEBUG GEMINI Status: {response.status_code}")
-        print(f"DEBUG GEMINI Response: {response.text}")
-        
-        if response.status_code == 200:
-            res_json = response.json()
-            return res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-        elif response.status_code in [429, 503]:
-            # Gestione robusta per 429 (Rate limit) e 503 (High demand)
-            cleaned = text.strip()
-            return cleaned[0].upper() + cleaned[1:] if cleaned else text
-        else:
-            return text
-    except Exception as e:
-        print(f"DEBUG GEMINI Exception: {str(e)}")
-        return text
+    # Tentativi multipli (fino a 10 volte, ogni 3 secondi in caso di 503 o 429)
+    max_retries = 10
+    retry_delay = 3
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=15)
+            print(f"DEBUG GEMINI [Tentativo {attempt}/{max_retries}] Status: {response.status_code}")
+            
+            if response.status_code == 200:
+                res_json = response.json()
+                return res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+            
+            elif response.status_code in [429, 503]:
+                # Server sovraccarico, attende prima di riprovare
+                print(f"DEBUG GEMINI: Servizio occupato ({response.status_code}), attendo {retry_delay}s...")
+                if attempt < max_retries:
+                    time.sleep(retry_delay)
+                    continue
+            else:
+                print(f"DEBUG GEMINI Response error: {response.text}")
+                break
+                
+        except Exception as e:
+            print(f"DEBUG GEMINI Exception [Tentativo {attempt}]: {str(e)}")
+            if attempt < max_retries:
+                time.sleep(retry_delay)
+                continue
+
+    # Se falliscono tutti i tentativi, pulisce almeno la formattazione di base del testo originale
+    cleaned = text.strip()
+    return cleaned[0].upper() + cleaned[1:] if cleaned else text
 
 # Template HTML della pergamena
 PERGAMENA_HTML = """
@@ -177,7 +193,6 @@ def webhook():
         chat_id = message.get("chat", {}).get("id")
         message_id = message.get("message_id")
         
-        # Pulisce ricorsivamente eventuali prefissi duplicati
         raw_text = message.get("text", "")
         while "BOZZA ELABORATA:\n\n" in raw_text:
             raw_text = raw_text.replace("BOZZA ELABORATA:\n\n", "")
@@ -236,7 +251,7 @@ def webhook():
             "reply_markup": keyboard
         }
         try:
-            res = requests.post(url, json=payload, timeout=10)
+            res = requests.post(url, json=payload, timeout=30) # Timeout allungato per reggere i retry multipli
             print("Risposta invio Telegram:", res.status_code, res.text)
         except Exception as e:
             print("Errore invio Telegram:", str(e))

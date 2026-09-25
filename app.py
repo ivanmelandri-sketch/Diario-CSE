@@ -61,7 +61,8 @@ def process_with_gemini(text):
         if response.status_code == 200:
             res_json = response.json()
             return res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-        elif response.status_code == 429:
+        elif response.status_code in [429, 503]:
+            # Gestione robusta per 429 (Rate limit) e 503 (High demand)
             cleaned = text.strip()
             return cleaned[0].upper() + cleaned[1:] if cleaned else text
         else:
@@ -175,7 +176,12 @@ def webhook():
         message = cq.get("message", {})
         chat_id = message.get("chat", {}).get("id")
         message_id = message.get("message_id")
-        text_to_save = message.get("text", "").replace("BOZZA ELABORATA:\n\n", "").strip()
+        
+        # Pulisce ricorsivamente eventuali prefissi duplicati
+        raw_text = message.get("text", "")
+        while "BOZZA ELABORATA:\n\n" in raw_text:
+            raw_text = raw_text.replace("BOZZA ELABORATA:\n\n", "")
+        text_to_save = raw_text.strip()
         
         if callback_data == "confirm_ok" and chat_id:
             now_italy = datetime.now(ITALY_TZ).strftime("%d/%m/%Y %H:%M")

@@ -2,42 +2,51 @@
     {
         "timestamp": "25/09/2026 alle 10:23",
         "autore": "Ivan Melandri",
-        "testo": "Va bene così"
+        "testo": "Va bene così",
+        "id": "f5780436-f3cd-4b6e-b73e-56f7ca5f0acf"
     },
     {
         "timestamp": "25/09/2026 alle 10:12",
         "autore": "Ivan Melandri",
-        "testo": "A seguito di una caduta accidentale, Franzoni ha riportato un trauma alla testa con conseguente ferita lacero-contusa e copiosa perdita ematica. Gli operatori sono prontamente intervenuti per gestire la situazione e hanno provveduto al suo immediato trasporto presso il pronto soccorso per le necessarie cure e gli accertamenti medici."
+        "testo": "A seguito di una caduta accidentale, Franzoni ha riportato un trauma alla testa con conseguente ferita lacero-contusa e copiosa perdita ematica. Gli operatori sono prontamente intervenuti per gestire la situazione e hanno provveduto al suo immediato trasporto presso il pronto soccorso per le necessarie cure e gli accertamenti medici.",
+        "id": "fbeb06de-0ce5-4b82-9cdd-13d6e0b056b8"
     },
     {
         "timestamp": "25/09/2026 alle 08:05",
         "autore": "Ivan Melandri",
-        "testo": "L'utente Franzoni è stato vittima di una caduta accidentale che gli ha procurato una ferita lacero-contusa alla testa, accompagnata da una copiosa fuoriuscita ematica. Considerata la natura della lesione, l'équipe è intervenuta tempestivamente, provvedendo all'immediato accompagnamento dell'utente presso il Pronto Soccorso per le necessarie valutazioni cliniche e le cure mediche del caso."
+        "testo": "L'utente Franzoni è stato vittima di una caduta accidentale che gli ha procurato una ferita lacero-contusa alla testa, accompagnata da una copiosa fuoriuscita ematica. Considerata la natura della lesione, l'équipe è intervenuta tempestivamente, provvedendo all'immediato accompagnamento dell'utente presso il Pronto Soccorso per le necessarie valutazioni cliniche e le cure mediche del caso.",
+        "id": "ed1649ed-9e22-4d71-b49d-c3b418967247"
     },
     {
         "timestamp": "25/09/2026 alle 07:31",
         "autore": "Ivan Melandri",
-        "testo": "L'utente Franzoni è stato vittima di una caduta accidentale che gli ha causato una ferita lacero-contusa al capo con conseguente abbondante perdita ematica. Gli operatori in servizio sono intervenuti tempestivamente, provvedendo al suo immediato trasporto presso il presidio di pronto soccorso per le necessarie cure e gli accertamenti medici."
+        "testo": "L'utente Franzoni è stato vittima di una caduta accidentale che gli ha causato una ferita lacero-contusa al capo con conseguente abbondante perdita ematica. Gli operatori in servizio sono intervenuti tempestivamente, provvedendo al suo immediato trasporto presso il presidio di pronto soccorso per le necessarie cure e gli accertamenti medici.",
+        "id": "0fe4876b-96c6-4ef5-a450-552cc3852f19"
     },
     {
         "timestamp": "2026-09-24 21:53:31",
-        "testo": "Eccomi qui, si allora.. Mmmm, volevo dire che ieri franzoni si è spaccato la testa cadendo per terra, un casino sangue Ovunque... Siamo corsi al pronto soccorso"
+        "testo": "Eccomi qui, si allora.. Mmmm, volevo dire che ieri franzoni si è spaccato la testa cadendo per terra, un casino sangue Ovunque... Siamo corsi al pronto soccorso",
+        "id": "a623ce61-5521-497d-bd1c-a727c42da5f3"
     },
     {
         "timestamp": "2026-09-24 21:49:52",
-        "testo": "Eccomi qui, si allora.. Mmmm, volevo dire che ieri franzoni si è spaccato la testa cadendo per terra, un casino sangue Ovunque... Siamo corsi al pronto soccorso"
+        "testo": "Eccomi qui, si allora.. Mmmm, volevo dire che ieri franzoni si è spaccato la testa cadendo per terra, un casino sangue Ovunque... Siamo corsi al pronto soccorso",
+        "id": "b14a955c-f421-40d1-abfe-b359102c82e5"
     },
     {
         "timestamp": "2026-09-24 21:42:06",
-        "testo": "Ecco una proposta di rielaborazione formale per il diario di bordo:\n\n***\n\n**Data evento:** [Inserire data di ieri]  \n**Utente coinvolto:** Franzoni  \n**Oggetto:** Infortunio per caduta accidentale e invio in Pronto Soccorso  \n\n**Descrizione dell'evento:**  \nNella giornata di ieri, l'utente Franzoni è stato vittima di una caduta a terra che gli ha procurato un trauma alla testa con conseguente copiosa perdita ematica. \n\n**Interventi effettuati:**  \nIl personale presente ha prestato il primo soccorso e ha provveduto tempestivamente ad accompagnare l'utente presso il Pronto Soccorso per gli accertamenti del caso e le necessarie cure mediche. \n\n*(Seguiranno aggiornamenti in merito al referto clinico e al decorso dell'utente).*"
+        "testo": "Ecco una proposta di rielaborazione formale per il diario di bordo:\n\n***\n\n**Data evento:** [Inserire data di ieri]  \n**Utente coinvolto:** Franzoni  \n**Oggetto:** Infortunio per caduta accidentale e invio in Pronto Soccorso  \n\n**Descrizione dell'evento:**  \nNella giornata di ieri, l'utente Franzoni è stato vittima di una caduta a terra che gli ha procurato un trauma alla testa con conseguente copiosa perdita ematica. \n\n**Interventi effettuati:**  \nIl personale presente ha prestato il primo soccorso e ha provveduto tempestivamente ad accompagnare l'utente presso il Pronto Soccorso per gli accertamenti del caso e le necessarie cure mediche. \n\n*(Seguiranno aggiornamenti in merito al referto clinico e al decorso dell'utente).*",
+        "id": "a11aa4d7-ad0b-4fa4-936d-b4bdd347984a"
     },
     {
         "timestamp": "2026-09-24 21:40:25",
-        "testo": "Eccomi qui, si allora.. Mmmm, volevo dire che ieri franzoni si è spaccato la testa cadendo per terra, un casino sangue Ovunque... Siamo corsi al pronto soccorso"
+        "testo": "Eccomi qui, si allora.. Mmmm, volevo dire che ieri franzoni si è spaccato la testa cadendo per terra, un casino sangue Ovunque... Siamo corsi al pronto soccorso",
+        "id": "8c2560f3-c624-478e-9445-5d49d8a4217f"
     },
     {
         "timestamp": "2026-09-24 21:34:09",
-        "testo": "Eccomi qui, si allora.. Mmmm, volevo dire che ieri franzoni si è spaccato la testa cadendo per terra, un casino sangue Ovunque... Siamo corsi al pronto soccorso"
+        "testo": "Eccomi qui, si allora.. Mmmm, volevo dire che ieri franzoni si è spaccato la testa cadendo per terra, un casino sangue Ovunque... Siamo corsi al pronto soccorso",
+        "id": "d8b1433e-a8f4-4a21-aa22-c3ccb84aa6f7"
     },
     {
         "id": 2,

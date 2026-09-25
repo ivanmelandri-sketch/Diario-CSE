@@ -35,20 +35,20 @@ def sintetizza_e_formalizza(testo_grezzo):
             "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
         )
         
-        # Chiamata pulita e diretta con il modello ufficiale imposto da Google
+        # Usiamo il modello stabile corretto
         response = client.models.generate_content(
-            model='gemini-3.8-flash',
+            model='gemini-1.5-flash',
             contents=f"{prompt_sistema}\n\nTesto da elaborare:\n{testo_grezzo}"
         )
         
         if response and hasattr(response, 'text') and response.text:
             return response.text.strip()
         else:
-            return testo_grezzo
+            return "[Errore: L'IA ha restituito una risposta vuota]"
             
     except Exception as e:
-        print(f"ERRORE DI GEMINI: {str(e)}")
-        return testo_grezzo
+        # Mostriamo l'errore esatto su Telegram per capire subito cosa accade
+        return f"[Errore IA: {str(e)}]"
 
 def leggi_diario_da_github():
     import base64

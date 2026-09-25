@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import time
 from datetime import datetime
 import pytz
@@ -29,10 +30,50 @@ def save_entries(entries):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(entries, f, ensure_ascii=False, indent=4)
 
+def advanced_local_cleaner(text):
+    if not text:
+        return ""
+    
+    # 1. Normalizza gli spazi iniziali/finali e i ritorni a capo
+    cleaned = re.sub(r'\s+', ' ', text).strip()
+    
+    if not cleaned:
+        return ""
+
+    # 2. Rimuove formule introduttive tipiche del parlato all'inizio della frase
+    intro_pattern = r'^(allora|dunque|praticamente|insomma|cioè|aspetta|fammi pensare|dunque fammi pensare)[\s,]+'
+    cleaned = re.sub(intro_pattern, '', cleaned, flags=re.IGNORECASE)
+
+    # 3. Rimuove onomatopee e intercalari isolati (es. ehhh, ahhhh, ehm, mmh)
+    interjections_pattern = r'\b(eh+|ah+|ehm+|mmh+|boh|mah|oh+)\b'
+    cleaned = re.sub(interjections_pattern, '', cleaned, flags=re.IGNORECASE)
+
+    # 4. Censura di base per le parolacce (sostituisce con asterischi educati)
+    bad_words = ['cazzo', 'merda', 'stronzo', 'stronza', 'vaffanculo', 'coglione', 'pirla', 'idiota', 'fanculo']
+    for bw in bad_words:
+        pattern = r'\b' + bw + r'\b'
+        replacement = lambda m: m.group(0)[0] + '*' * (len(m.group(0)) - 2) + m.group(0)[-1] if len(m.group(0)) > 2 else '***'
+        cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
+
+    # 5. Pulizia finale di eventuali spazi multipli rimasti vuoti dopo i tagli
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    
+    if not cleaned:
+        return text.strip()
+
+    # 6. Regola la maiuscola iniziale
+    cleaned = cleaned[0].upper() + cleaned[1:]
+
+    # 7. Aggiunge il punto finale se manca
+    if cleaned[-1] not in ['.', '!', '?']:
+        cleaned += '.'
+
+    return cleaned
+
 def process_with_gemini(text):
     if not GEMINI_API_KEY:
-        print("DEBUG GEMINI: Chiave API mancante!")
-        return "⚠️ Errore di configurazione: GEMINI_API_KEY mancante."
+        print("DEBUG GEMINI: Chiave API mancante, uso pulizia locale.")
+        return advanced_local_cleaner(text)
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
@@ -54,7 +95,7 @@ def process_with_gemini(text):
         }]
     }
 
-    # Tentativi multipli (fino a 10 volte, ogni 3 secondi in caso di 503 o 429)
+    # Tentativi multipli robusti: 10 tentativi ogni 3 secondi
     max_retries = 10
     retry_delay = 3
 
@@ -82,8 +123,9 @@ def process_with_gemini(text):
                 time.sleep(retry_delay)
                 continue
 
-    # Se falliscono tutti i tentativi, restituisce l'avviso chiaro
-    return "⚠️ Servizio IA momentaneamente sovraccarico. Impossibile elaborare la bozza, riprova tra poco."
+    # Se falliscono tutti i 10 tentativi, interviene la pulizia locale avanzata
+    print("DEBUG: IA non disponibile dopo 10 tentativi, attivazione pulizia locale avanzata.")
+    return advanced_local_cleaner(text)
 
 # Template HTML della pergamena
 PERGAMENA_HTML = """
@@ -233,31 +275,24 @@ def webhook():
             
         processed_text = process_with_gemini(incoming_text)
         
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        
-        # Se c'è un errore dell'IA, invia solo l'avviso senza i bottoni di pubblicazione
-        if processed_text.startswith("⚠️"):
-            payload = {
-                "chat_id": chat_id,
-                "text": processed_text
-            }
-        else:
-            keyboard = {
-                "inline_keyboard": [
-                    [
-                        {"text": "✅ Pubblica (OK)", "callback_data": "confirm_ok"},
-                        {"text": "✏️ Modifica (M)", "callback_data": "edit_mode"}
-                    ]
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ Pubblica (OK)", "callback_data": "confirm_ok"},
+                    {"text": "✏️ Modifica (M)", "callback_data": "edit_mode"}
                 ]
-            }
-            payload = {
-                "chat_id": chat_id,
-                "text": f"BOZZA ELABORATA:\n\n{processed_text}",
-                "reply_markup": keyboard
-            }
-            
+            ]
+        }
+        
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": f"BOZZA ELABORATA:\n\n{processed_text}",
+            "reply_markup": keyboard
+        }
         try:
-            res = requests.post(url, json=payload, timeout=30)
+            # Timeout allungato a 40s per reggere tutti i tentativi multipli verso l'API
+            res = requests.post(url, json=payload, timeout=40)
             print("Risposta invio Telegram:", res.status_code, res.text)
         except Exception as e:
             print("Errore invio Telegram:", str(e))

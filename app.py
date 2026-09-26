@@ -1,5 +1,5 @@
 import os
-import json
+import sqlite3
 import re
 import time
 from datetime import datetime
@@ -12,24 +12,55 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Percorso assoluto sicuro per garantire la persistenza dei dati sul server
+# Percorso assoluto sicuro per il database SQLite (memoria a lungo termine garantita)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(BASE_DIR, "diario.json")
+DB_FILE = os.path.join(BASE_DIR, "diario.db")
 
 ITALY_TZ = pytz.timezone("Europe/Rome")
 
-def load_entries():
-    if not os.path.exists(DATA_FILE):
-        return []
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            operator TEXT NOT NULL,
+            text TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-def save_entries(entries):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(entries, f, ensure_ascii=False, indent=4)
+# Inizializza il database all'avvio
+init_db()
+
+def load_entries():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT timestamp, operator, text FROM entries ORDER BY id DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"timestamp": row["timestamp"], "operator": row["operator"], "text": row["text"]} for row in rows]
+
+def save_entry(timestamp, operator, text):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO entries (timestamp, operator, text) VALUES (?, ?, ?)", (timestamp, operator, text))
+    conn.commit()
+    conn.close()
+
+def delete_entry_by_index(index):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM entries ORDER BY id DESC")
+    ids = [row[0] for row in cursor.fetchall()]
+    if 0 <= index < len(ids):
+        target_id = ids[index]
+        cursor.execute("DELETE FROM entries WHERE id = ?", (target_id,))
+        conn.commit()
+    conn.close()
 
 def advanced_local_cleaner(text):
     if not text:
@@ -264,10 +295,7 @@ def index():
 
 @app.route("/delete/<int:index>")
 def delete_entry(index):
-    entries = load_entries()
-    if 0 <= index < len(entries):
-        entries.pop(index)
-        save_entries(entries)
+    delete_entry_by_index(index)
     return redirect(url_for('index'))
 
 @app.route("/webhook", methods=["POST"])
@@ -293,9 +321,7 @@ def webhook():
         
         if callback_data == "confirm_ok" and chat_id:
             now_italy = datetime.now(ITALY_TZ).strftime("%d/%m/%Y %H:%M")
-            entries = load_entries()
-            entries.insert(0, {"timestamp": now_italy, "operator": operator_name, "text": text_to_save})
-            save_entries(entries)
+            save_entry(now_italy, operator_name, text_to_save)
             
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
             requests.post(url, json={

@@ -12,7 +12,10 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-DATA_FILE = "diario.json"
+# Percorso assoluto sicuro per garantire la persistenza dei dati sul server
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_FILE = os.path.join(BASE_DIR, "diario.json")
+
 ITALY_TZ = pytz.timezone("Europe/Rome")
 
 def load_entries():
@@ -55,7 +58,6 @@ def process_with_gemini(text):
     if not GEMINI_API_KEY:
         return advanced_local_cleaner(text)
 
-    # Utilizziamo gemini-3.5-flash-lite: versione stabile, reattiva e con minor traffico sui server
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     
@@ -101,6 +103,7 @@ PERGAMENA_HTML = """
 <html lang="it">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Diario Operativo</title>
     <style>
         body {
@@ -108,7 +111,8 @@ PERGAMENA_HTML = """
             font-family: 'Georgia', serif;
             color: #2c221e;
             margin: 0;
-            padding: 20px;
+            padding: 15px;
+            font-size: 16px;
         }
         .container {
             max-width: 850px;
@@ -116,7 +120,7 @@ PERGAMENA_HTML = """
             background: #fff8eb;
             border: 2px solid #d4c3a3;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            padding: 40px;
+            padding: 20px;
             border-radius: 8px;
         }
         h1 {
@@ -124,25 +128,28 @@ PERGAMENA_HTML = """
             color: #5c4033;
             border-bottom: 2px solid #d4c3a3;
             padding-bottom: 15px;
-            margin-bottom: 30px;
+            margin-bottom: 25px;
+            font-size: 1.8em;
         }
         .entry {
-            margin-bottom: 25px;
-            padding: 20px;
+            margin-bottom: 20px;
+            padding: 15px;
             border-radius: 6px;
             border: 1px solid rgba(0,0,0,0.08);
             position: relative;
         }
         .entry-meta {
-            font-size: 0.85em;
+            font-size: 0.95em;
             color: #555;
             margin-bottom: 10px;
             font-weight: bold;
             display: flex;
             justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 5px;
         }
         .entry-content {
-            font-size: 1.05em;
+            font-size: 1.15em;
             line-height: 1.6;
             white-space: pre-wrap;
             margin-bottom: 15px;
@@ -155,8 +162,8 @@ PERGAMENA_HTML = """
             background-color: #8b5a2b;
             color: white;
             border: none;
-            padding: 5px 12px;
-            font-size: 0.85em;
+            padding: 8px 14px;
+            font-size: 0.95em;
             border-radius: 4px;
             cursor: pointer;
             text-decoration: none;
@@ -176,18 +183,37 @@ PERGAMENA_HTML = """
             display: flex;
             justify-content: center;
             gap: 15px;
+            flex-wrap: wrap;
         }
         .btn {
             background-color: #8b5a2b;
             color: white;
-            padding: 10px 20px;
+            padding: 12px 20px;
             text-decoration: none;
             border-radius: 4px;
             font-family: sans-serif;
             font-weight: bold;
+            font-size: 1em;
         }
         .btn:hover {
             background-color: #5c4033;
+        }
+
+        /* Ottimizzazione specifica per smartphone */
+        @media (max-width: 600px) {
+            body {
+                padding: 5px;
+            }
+            .container {
+                padding: 12px;
+            }
+            .entry-content {
+                font-size: 1.2em;
+            }
+            .btn, .btn-small {
+                padding: 10px 16px;
+                font-size: 1em;
+            }
         }
     </style>
     <script>
@@ -219,7 +245,7 @@ PERGAMENA_HTML = """
                 </div>
             {% endfor %}
         {% else %}
-            <p style="text-align: center; color: #7f6e62;">Nessuna voce registrata nel diario.</p>
+            <p style="text-align: center; color: #7f6e62; font-size: 1.1em;">Nessuna voce registrata nel diario.</p>
         {% endif %}
         
         <div class="actions">
@@ -341,7 +367,7 @@ def export_word():
         html_content += f"<p>{entry['text']}</p><hr/>"
     html_content += "</body></html>"
     
-    export_path = "backup_diario.doc"
+    export_path = os.path.join(BASE_DIR, "backup_diario.doc")
     with open(export_path, "w", encoding="utf-8") as f:
         f.write(html_content)
         
@@ -354,7 +380,7 @@ def export():
     for entry in entries:
         content += f"[{entry['timestamp']}] - Operatore: {entry.get('operator', 'N/D')}\n{entry['text']}\n\n" + "-"*40 + "\n\n"
     
-    export_path = "backup_diario.txt"
+    export_path = os.path.join(BASE_DIR, "backup_diario.txt")
     with open(export_path, "w", encoding="utf-8") as f:
         f.write(content)
         

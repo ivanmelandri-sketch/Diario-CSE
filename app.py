@@ -12,7 +12,7 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Percorso assoluto sicuro per il database SQLite (memoria a lungo termine garantita)
+# Percorso assoluto sicuro per il database SQLite (memoria persistente garantita)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "diario.db")
 
@@ -230,7 +230,6 @@ PERGAMENA_HTML = """
             background-color: #5c4033;
         }
 
-        /* Ottimizzazione specifica per smartphone */
         @media (max-width: 600px) {
             body {
                 padding: 5px;

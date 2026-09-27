@@ -1,34 +1,56 @@
 import os
-import sqlite3
 import re
 import time
 from datetime import datetime
 import pytz
 from flask import Flask, render_template_string, request, redirect, url_for, send_file
 import requests
+import psycopg2
+import psycopg2.extras
 
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Percorso assoluto sicuro per il database SQLite (memoria persistente garantita)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_FILE = os.path.join(BASE_DIR, "diario.db")
-
 ITALY_TZ = pytz.timezone("Europe/Rome")
 
+def get_db_connection():
+    if DATABASE_URL:
+        # Connessione al database esterno cloud (Supabase / PostgreSQL) - Persistenza blindata al 100%
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        return conn, "postgres"
+    else:
+        # Fallback locale SQLite per test in locale sul pc
+        import sqlite3
+        db_file = os.path.join(BASE_DIR, "diario.db")
+        conn = sqlite3.connect(db_file)
+        conn.row_factory = sqlite3.Row
+        return conn, "sqlite"
+
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT NOT NULL,
-            operator TEXT NOT NULL,
-            text TEXT NOT NULL
-        )
-    ''')
+    if db_type == "postgres":
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS entries (
+                id SERIAL PRIMARY KEY,
+                timestamp TEXT NOT NULL,
+                operator TEXT NOT NULL,
+                text TEXT NOT NULL
+            )
+        ''')
+    else:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                operator TEXT NOT NULL,
+                text TEXT NOT NULL
+            )
+        ''')
     conn.commit()
     conn.close()
 
@@ -36,29 +58,34 @@ def init_db():
 init_db()
 
 def load_entries():
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT timestamp, operator, text FROM entries ORDER BY id DESC")
-    rows = cursor.fetchall()
-    conn.close()
-    return [{"timestamp": row["timestamp"], "operator": row["operator"], "text": row["text"]} for row in rows]
+    if db_type == "postgres":
+        cursor.execute("SELECT timestamp, operator, text FROM entries ORDER BY id DESC")
+        rows = cursor.fetchall()
+        conn.close()
+        return [{"timestamp": row[0], "operator": row[1], "text": row[2]} for row in rows]
+    else:
+        cursor.execute("SELECT timestamp, operator, text FROM entries ORDER BY id DESC")
+        rows = cursor.fetchall()
+        conn.close()
+        return [{"timestamp": row["timestamp"], "operator": row["operator"], "text": row["text"]} for row in rows]
 
 def save_entry(timestamp, operator, text):
-    conn = sqlite3.connect(DB_FILE)
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO entries (timestamp, operator, text) VALUES (?, ?, ?)", (timestamp, operator, text))
+    cursor.execute("INSERT INTO entries (timestamp, operator, text) VALUES (%s, %s, %s)" if db_type == "postgres" else "INSERT INTO entries (timestamp, operator, text) VALUES (?, ?, ?)", (timestamp, operator, text))
     conn.commit()
     conn.close()
 
 def delete_entry_by_index(index):
-    conn = sqlite3.connect(DB_FILE)
+    conn, db_type = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM entries ORDER BY id DESC")
     ids = [row[0] for row in cursor.fetchall()]
     if 0 <= index < len(ids):
         target_id = ids[index]
-        cursor.execute("DELETE FROM entries WHERE id = ?", (target_id,))
+        cursor.execute("DELETE FROM entries WHERE id = %s" if db_type == "postgres" else "DELETE FROM entries WHERE id = ?", (target_id,))
         conn.commit()
     conn.close()
 

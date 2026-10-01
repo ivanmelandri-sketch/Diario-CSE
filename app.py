@@ -338,10 +338,10 @@ def webhook():
         message_id = message.get("message_id")
         
         raw_text = message.get("text", "")
-        for prefix in ["BOZZA ELABORATA:\n\n", "✏️ MODIFICA - Invia la correzione o usa questo testo:\n\n"]:
-            if raw_text.startswith(prefix):
-                raw_text = raw_text.replace(prefix, "")
-        text_to_save = raw_text.strip()
+        if raw_text.startswith("BOZZA ELABORATA:\n\n"):
+            text_to_save = raw_text.replace("BOZZA ELABORATA:\n\n", "").strip()
+        else:
+            text_to_save = raw_text.strip()
         
         operator_name = cq.get("from", {}).get("first_name", "Operatore")
         
@@ -358,16 +358,10 @@ def webhook():
             
         elif callback_data == "edit_mode" and chat_id:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "✅ Conferma Testo Modificato", "callback_data": "confirm_ok"}]
-                ]
-            }
             requests.post(url, json={
                 "chat_id": chat_id,
                 "message_id": message_id,
-                "text": f"✏️ MODIFICA - Invia la correzione o usa questo testo:\n\n{text_to_save}",
-                "reply_markup": keyboard
+                "text": f"✏️ MODIFICA:\nLa bozza precedente era:\n\"{text_to_save}\"\n\nInvia direttamente un nuovo messaggio con il testo corretto che desideri pubblicare."
             })
             
         return "OK", 200

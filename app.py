@@ -17,13 +17,14 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ITALY_TZ = pytz.timezone("Europe/Rome")
 
+# Dizionario in memoria per tracciare se un utente è in modalità modifica {chat_id: message_id}
+PENDING_EDITS = {}
+
 def get_db_connection():
     if DATABASE_URL:
-        # Connessione al database esterno cloud (Supabase / PostgreSQL) - Persistenza blindata al 100%
         conn = psycopg2.connect(DATABASE_URL, sslmode='require')
         return conn, "postgres"
     else:
-        # Fallback locale SQLite per test in locale sul pc
         import sqlite3
         db_file = os.path.join(BASE_DIR, "diario.db")
         conn = sqlite3.connect(db_file)
@@ -54,7 +55,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Inizializza il database all'avvio
 init_db()
 
 def load_entries():
@@ -258,19 +258,10 @@ PERGAMENA_HTML = """
         }
 
         @media (max-width: 600px) {
-            body {
-                padding: 5px;
-            }
-            .container {
-                padding: 12px;
-            }
-            .entry-content {
-                font-size: 1.2em;
-            }
-            .btn, .btn-small {
-                padding: 10px 16px;
-                font-size: 1em;
-            }
+            body { padding: 5px; }
+            .container { padding: 12px; }
+            .entry-content { font-size: 1.2em; }
+            .btn, .btn-small { padding: 10px 16px; font-size: 1em; }
         }
     </style>
     <script>
@@ -330,6 +321,7 @@ def webhook():
     if not data:
         return "OK", 200
 
+    # Gestione dei pulsanti inline (Conferma o Modifica)
     if "callback_query" in data:
         cq = data["callback_query"]
         callback_data = cq.get("data")
@@ -346,6 +338,8 @@ def webhook():
         operator_name = cq.get("from", {}).get("first_name", "Operatore")
         
         if callback_data == "confirm_ok" and chat_id:
+            # Se l'utente conferma, rimuoviamo lo stato di modifica eventuale e salviamo
+            PENDING_EDITS.pop(chat_id, None)
             now_italy = datetime.now(ITALY_TZ).strftime("%d/%m/%Y %H:%M")
             save_entry(now_italy, operator_name, text_to_save)
             
@@ -357,15 +351,20 @@ def webhook():
             })
             
         elif callback_data == "edit_mode" and chat_id:
+            # Impostiamo lo stato di attesa salvando il message_id da modificare
+            PENDING_EDITS[chat_id] = message_id
+            
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
             requests.post(url, json={
                 "chat_id": chat_id,
                 "message_id": message_id,
-                "text": f"✏️ MODIFICA:\nLa bozza precedente era:\n\"{text_to_save}\"\n\nInvia direttamente un nuovo messaggio con il testo corretto che desideri pubblicare."
+                "text": f"✏️ MODIFICA IN CORSO\n\nBozza attuale:\n\"{text_to_save}\"\n\n👉 *Scrivi direttamente qui sotto il nuovo testo o la correzione:*",
+                "parse_mode": "Markdown"
             })
             
         return "OK", 200
 
+    # Gestione dei messaggi di testo in chat
     if "message" in data and "text" in data["message"]:
         message = data["message"]
         chat_id = message.get("chat", {}).get("id")
@@ -377,7 +376,34 @@ def webhook():
             
         if incoming_text.startswith("/"):
             return "OK", 200
+
+        # Controlla se la chat è in attesa di una modifica
+        if chat_id in PENDING_EDITS:
+            target_message_id = PENDING_EDITS.pop(chat_id) # Rimuove lo stato
             
+            # Elabora la modifica con Gemini
+            processed_text = process_with_gemini(incoming_text)
+            
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "✅ Pubblica (OK)", "callback_data": "confirm_ok"},
+                        {"text": "✏️ Modifica (M)", "callback_data": "edit_mode"}
+                    ]
+                ]
+            }
+            
+            # Aggiorna direttamente il messaggio originale del bot con il testo corretto
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
+            requests.post(url, json={
+                "chat_id": chat_id,
+                "message_id": target_message_id,
+                "text": f"BOZZA ELABORATA:\n\n{processed_text}",
+                "reply_markup": keyboard
+            })
+            return "OK", 200
+
+        # Flusso standard: invio di un nuovo appunto
         processed_text = process_with_gemini(incoming_text)
         
         keyboard = {

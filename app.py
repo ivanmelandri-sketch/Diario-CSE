@@ -43,6 +43,13 @@ def init_db():
                 text TEXT NOT NULL
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS operators (
+                chat_id BIGINT PRIMARY KEY,
+                name TEXT NOT NULL,
+                registered_at TEXT NOT NULL
+            )
+        ''')
     else:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS entries (
@@ -52,10 +59,49 @@ def init_db():
                 text TEXT NOT NULL
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS operators (
+                chat_id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                registered_at TEXT NOT NULL
+            )
+        ''')
     conn.commit()
     conn.close()
 
 init_db()
+
+def register_operator(chat_id, name):
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    now_str = datetime.now(ITALY_TZ).strftime("%d/%m/%Y %H:%M")
+    try:
+        if db_type == "postgres":
+            cursor.execute(
+                "INSERT INTO operators (chat_id, name, registered_at) VALUES (%s, %s, %s) ON CONFLICT (chat_id) DO UPDATE SET name = EXCLUDED.name",
+                (chat_id, name, now_str)
+            )
+        else:
+            cursor.execute(
+                "INSERT OR REPLACE INTO operators (chat_id, name, registered_at) VALUES (?, ?, ?)",
+                (chat_id, name, now_str)
+            )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+def get_all_operators_chat_ids():
+    conn, db_type = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT chat_id FROM operators")
+    rows = cursor.fetchall()
+    conn.close()
+    if db_type == "postgres":
+        return [row[0] for row in rows]
+    else:
+        return [row["chat_id"] for row in rows]
 
 def load_entries():
     conn, db_type = get_db_connection()
@@ -122,8 +168,9 @@ def process_with_gemini(text):
     prompt = (
         "Sei un assistente di redazione per un team socio-educativo. "
         "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
-        "esclusivamente in un paragrafo descrittivo dell'evento o dell'attività svolta, "
-        "scritto con un tono formale e professionale. "
+        "esclusivamente in un paragrafo descrittivo dell'attività svolta, "
+        "scritto in modo chiaro, sintetico e professionale, ma con un tono naturale e scorrevole "
+        "(evita termini eccessivamente burocratici o clinici). "
         "Regole tassative: "
         "1. Non inserire data, ora, intestazioni, firme o saluti nel testo. "
         "2. Non aggiungere frasi di chiusura. "
@@ -328,6 +375,11 @@ def webhook():
         message = cq.get("message", {})
         chat_id = message.get("chat", {}).get("id")
         message_id = message.get("message_id")
+        operator_name = cq.get("from", {}).get("first_name", "Operatore")
+        
+        # Registra o aggiorna l'operatore nel database
+        if chat_id:
+            register_operator(chat_id, operator_name)
         
         raw_text = message.get("text", "")
         if raw_text.startswith("BOZZA ELABORATA:\n\n"):
@@ -335,14 +387,12 @@ def webhook():
         else:
             text_to_save = raw_text.strip()
         
-        operator_name = cq.get("from", {}).get("first_name", "Operatore")
-        
         if callback_data == "confirm_ok" and chat_id:
-            # Se l'utente conferma, rimuoviamo lo stato di modifica eventuale e salviamo
             PENDING_EDITS.pop(chat_id, None)
             now_italy = datetime.now(ITALY_TZ).strftime("%d/%m/%Y %H:%M")
             save_entry(now_italy, operator_name, text_to_save)
             
+            # Modifica il messaggio interattivo corrente per l'utente che ha confermato
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
             requests.post(url, json={
                 "chat_id": chat_id,
@@ -350,8 +400,22 @@ def webhook():
                 "text": f"✅ PUBBLICATO CON SUCCESSO DA {operator_name.upper()}:\n\n{text_to_save}"
             })
             
+            # BROADCAST A TUTTI GLI OPERATORI REGISTRATI
+            all_operators = get_all_operators_chat_ids()
+            notif_text = f"🔔 **Nuova voce pubblicata nel Diario Operativo!**\n👤 Operatore: {operator_name}\n📅 Data: {now_italy}\n\n\"{text_to_save}\""
+            
+            for op_chat_id in all_operators:
+                notif_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                try:
+                    requests.post(notif_url, json={
+                        "chat_id": op_chat_id,
+                        "text": notif_text,
+                        "parse_mode": "Markdown"
+                    })
+                except Exception:
+                    pass
+            
         elif callback_data == "edit_mode" and chat_id:
-            # Impostiamo lo stato di attesa salvando il message_id da modificare
             PENDING_EDITS[chat_id] = message_id
             
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
@@ -374,14 +438,15 @@ def webhook():
         if not chat_id or not incoming_text:
             return "OK", 200
             
+        # Registra l'operatore ogni volta che scrive
+        register_operator(chat_id, operator_name)
+        
         if incoming_text.startswith("/"):
             return "OK", 200
 
         # Controlla se la chat è in attesa di una modifica
         if chat_id in PENDING_EDITS:
-            target_message_id = PENDING_EDITS.pop(chat_id) # Rimuove lo stato
-            
-            # Elabora la modifica con Gemini
+            target_message_id = PENDING_EDITS.pop(chat_id)
             processed_text = process_with_gemini(incoming_text)
             
             keyboard = {
@@ -393,7 +458,6 @@ def webhook():
                 ]
             }
             
-            # Aggiorna direttamente il messaggio originale del bot con il testo corretto
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
             requests.post(url, json={
                 "chat_id": chat_id,

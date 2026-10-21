@@ -103,18 +103,24 @@ def get_all_operators_chat_ids():
     else:
         return [row["chat_id"] for row in rows]
 
-def load_entries():
+def load_entries(search_query=None):
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    if db_type == "postgres":
-        cursor.execute("SELECT timestamp, operator, text FROM entries ORDER BY id DESC")
-        rows = cursor.fetchall()
-        conn.close()
-        return [{"timestamp": row[0], "operator": row[1], "text": row[2]} for row in rows]
+    
+    if search_query:
+        if db_type == "postgres":
+            cursor.execute("SELECT timestamp, operator, text FROM entries WHERE text ILIKE %s OR operator ILIKE %s ORDER BY id DESC", (f"%{search_query}%", f"%{search_query}%"))
+        else:
+            cursor.execute("SELECT timestamp, operator, text FROM entries WHERE text LIKE ? OR operator LIKE ? ORDER BY id DESC", (f"%{search_query}%", f"%{search_query}%"))
     else:
         cursor.execute("SELECT timestamp, operator, text FROM entries ORDER BY id DESC")
-        rows = cursor.fetchall()
-        conn.close()
+        
+    rows = cursor.fetchall()
+    conn.close()
+    
+    if db_type == "postgres":
+        return [{"timestamp": row[0], "operator": row[1], "text": row[2]} for row in rows]
+    else:
         return [{"timestamp": row["timestamp"], "operator": row["operator"], "text": row["text"]} for row in rows]
 
 def save_entry(timestamp, operator, text):
@@ -162,7 +168,7 @@ def process_with_gemini(text):
     if not GEMINI_API_KEY:
         return advanced_local_cleaner(text)
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     
     prompt = (
@@ -181,8 +187,8 @@ def process_with_gemini(text):
         "contents": [{"parts": [{"text": f"{prompt}\n\nTesto da elaborare:\n{text}"}]}]
     }
 
-    max_retries = 10
-    retry_delay = 3
+    max_retries = 5
+    retry_delay = 2
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -323,6 +329,15 @@ PERGAMENA_HTML = """
 <body>
     <div class="container">
         <h1>Diario Operativo</h1>
+        
+        <form method="GET" action="/" style="text-align: center; margin-bottom: 25px;">
+            <input type="text" name="q" value="{{ search_query if search_query else '' }}" placeholder="Cerca nome utente o parola chiave..." style="padding: 10px; width: 60%; max-width: 350px; border: 1px solid #d4c3a3; border-radius: 4px; background: #fff; font-family: 'Georgia', serif; font-size: 1em;">
+            <button type="submit" class="btn-small" style="padding: 10px 15px; margin-left: 5px;">Filtra</button>
+            {% if search_query %}
+                <a href="/" class="btn-small btn-delete" style="text-decoration: none; padding: 10px 15px; margin-left: 5px; display: inline-block;">Annulla</a>
+            {% endif %}
+        </form>
+
         {% if entries %}
             {% for entry in entries %}
                 {% set colors = ['#fcf8e3', '#d9edf7', '#dff0d8', '#f2dede', '#fcf8e3', '#e8f4f8'] %}
@@ -344,8 +359,8 @@ PERGAMENA_HTML = """
         {% endif %}
         
         <div class="actions">
-            <a href="/export-word" class="btn">Scarica Backup (.doc)</a>
-            <a href="/export" class="btn">Scarica Backup (.txt)</a>
+            <a href="/export-word{% if search_query %}?q={{ search_query }}{% endif %}" class="btn">Stampa Fascicolo (.doc)</a>
+            <a href="/export{% if search_query %}?q={{ search_query }}{% endif %}" class="btn">Scarica Backup (.txt)</a>
         </div>
     </div>
 </body>
@@ -354,8 +369,9 @@ PERGAMENA_HTML = """
 
 @app.route("/")
 def index():
-    entries = load_entries()
-    return render_template_string(PERGAMENA_HTML, entries=entries)
+    search_query = request.args.get("q", "").strip()
+    entries = load_entries(search_query if search_query else None)
+    return render_template_string(PERGAMENA_HTML, entries=entries, search_query=search_query)
 
 @app.route("/delete/<int:index>")
 def delete_entry(index):
@@ -377,20 +393,22 @@ def webhook():
         message_id = message.get("message_id")
         operator_name = cq.get("from", {}).get("first_name", "Operatore")
         
-        # Registra o aggiorna l'operatore nel database
         if chat_id:
             register_operator(chat_id, operator_name)
         
         raw_text = message.get("text", "")
-        if raw_text.startswith("BOZZA ELABORATA:\n\n"):
-            text_to_save = raw_text.replace("BOZZA ELABORATA:\n\n", "").strip()
-        else:
-            text_to_save = raw_text.strip()
-        
+        # Pulizia robusta del testo della bozza indipendentemente dal prefisso
+        text_to_save = raw_text
+        if "BOZZA ELABORATA:" in raw_text:
+            text_to_save = raw_text.split("BOZZA ELABORATA:")[-1].strip()
+        text_to_save = text_to_save.strip()
+
         if callback_data == "confirm_ok" and chat_id:
             PENDING_EDITS.pop(chat_id, None)
             now_italy = datetime.now(ITALY_TZ).strftime("%d/%m/%Y %H:%M")
-            save_entry(now_italy, operator_name, text_to_save)
+            
+            if text_to_save:
+                save_entry(now_italy, operator_name, text_to_save)
             
             # Modifica il messaggio interattivo corrente per l'utente che ha confermato
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
@@ -438,7 +456,6 @@ def webhook():
         if not chat_id or not incoming_text:
             return "OK", 200
             
-        # Registra l'operatore ogni volta che scrive
         register_operator(chat_id, operator_name)
         
         if incoming_text.startswith("/"):
@@ -494,10 +511,13 @@ def webhook():
 
 @app.route("/export-word")
 def export_word():
-    entries = load_entries()
+    search_query = request.args.get("q", "").strip()
+    entries = load_entries(search_query if search_query else None)
+    
     html_content = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>"
-    html_content += "<head><meta charset='utf-8'><title>Diario Operativo</title></head><body>"
-    html_content += "<h1>Diario Operativo - Backup</h1>"
+    html_content += "<head><meta charset='utf-8'><title>Fascicolo Utente / Diario Operativo</title></head><body>"
+    title_suffix = f" - Filtro: {search_query}" if search_query else ""
+    html_content += f"<h1>Diario Operativo - Fascicolo{title_suffix}</h1>"
     for entry in entries:
         html_content += f"<p><b>Operatore:</b> {entry.get('operator', 'N/D')} | <b>Data:</b> {entry['timestamp']}</p>"
         html_content += f"<p>{entry['text']}</p><hr/>"
@@ -507,11 +527,13 @@ def export_word():
     with open(export_path, "w", encoding="utf-8") as f:
         f.write(html_content)
         
-    return send_file(export_path, as_attachment=True, download_name="diario_operativo.doc")
+    return send_file(export_path, as_attachment=True, download_name="fascicolo_utente.doc")
 
 @app.route("/export")
 def export():
-    entries = load_entries()
+    search_query = request.args.get("q", "").strip()
+    entries = load_entries(search_query if search_query else None)
+    
     content = ""
     for entry in entries:
         content += f"[{entry['timestamp']}] - Operatore: {entry.get('operator', 'N/D')}\n{entry['text']}\n\n" + "-"*40 + "\n\n"

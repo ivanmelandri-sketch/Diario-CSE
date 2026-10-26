@@ -287,20 +287,4 @@ PERGAMENA_HTML = """<!DOCTYPE html>
             flex-wrap: wrap;
         }
         .btn {
-            background-color: #8b5a2b;
-            color: white;
-            padding: 12px 20px;
-            text-decoration: none;
-            border-radius: 4px;
-            font-family: sans-serif;
-            font-weight: bold;
-            font-size: 1em;
-        }
-        .btn:hover {
-            background-color: #5c4033;
-        }
-        @media (max-width: 600px) {
-            body { padding: 5px; }
-            .container { padding: 12px; }
-            .entry-content { font-size: 1.2em; }
-            .btn, .btn
+            background-color: #8b

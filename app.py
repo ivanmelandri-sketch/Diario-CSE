@@ -167,7 +167,6 @@ def process_with_gemini(text):
     if not GEMINI_API_KEY:
         return advanced_local_cleaner(text)
 
-    # Endpoint ufficiale e stabile
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     
@@ -381,4 +380,14 @@ def webhook():
         operator_name = cq.get("from", {}).get("first_name", "Operatore")
         
         if chat_id:
-            register_operator
+            register_operator(chat_id, operator_name)
+        
+        raw_text = message.get("text", "")
+        text_to_save = raw_text
+        if "BOZZA ELABORATA:" in raw_text:
+            text_to_save = raw_text.split("BOZZA ELABORATA:")[-1].strip()
+        text_to_save = text_to_save.strip()
+
+        if callback_data == "confirm_ok" and chat_id:
+            PENDING_EDITS.pop(chat_id, None)
+            now_italy = datetime.now(

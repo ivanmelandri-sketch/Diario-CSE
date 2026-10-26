@@ -207,7 +207,7 @@ def handle_message(msg):
         send(chat_id, "Invia la nota come messaggio di testo.")
         return
     if text.startswith("/start"):
-        send(chat_id, "Ciao! Scrivimi la nota: la sistemo e, se ti va bene, la pubblichi sul diario.")
+        send(chat_id, "👋 Ciao! Scrivimi la nota: la sistemo e, se ti va bene, la pubblichi sul diario.")
         return
 
     user = msg.get("from", {})
@@ -217,21 +217,21 @@ def handle_message(msg):
     pending = PENDING_EDITS.get(chat_id)
     if pending and pending.get("awaiting_edit"):
         PENDING_EDITS[chat_id] = {"text": text, "operator": name, "awaiting_edit": False}
-        send(chat_id, f"Ecco la nota corretta:\n\n{text}",
-             [("Pubblica", "publish"), ("Modifica", "edit")])
+        send(chat_id, f"📝 Ecco la nota corretta:\n\n{text}",
+             [("✅ Pubblica", "publish"), ("✏️ Modifica", "edit")])
         return
 
-    send(chat_id, "Elaboro la nota...")
+    send(chat_id, "⏳ Elaboro la nota...")
     cleaned = process_with_gemini(text)
     if cleaned:
         PENDING_EDITS[chat_id] = {"text": cleaned, "operator": name, "awaiting_edit": False}
-        send(chat_id, f"Ecco la nota pronta:\n\n{cleaned}",
-             [("Pubblica", "publish"), ("Modifica", "edit")])
+        send(chat_id, f"📝 Ecco la nota pronta:\n\n{cleaned}",
+             [("✅ Pubblica", "publish"), ("✏️ Modifica", "edit")])
     else:
         PENDING_EDITS[chat_id] = {"text": text, "operator": name, "awaiting_edit": False}
-        send(chat_id, f"Non sono riuscito a elaborare la nota. Questo è il testo originale:\n\n{text}\n\n"
+        send(chat_id, f"⚠️ Non sono riuscito a elaborare la nota. Questo è il testo originale:\n\n{text}\n\n"
                       "Premi Modifica per correggerlo a mano.",
-             [("Modifica", "edit"), ("Annulla", "cancel")])
+             [("✏️ Modifica", "edit"), ("❌ Annulla", "cancel")])
 
 
 def handle_callback(cq):
@@ -247,13 +247,13 @@ def handle_callback(cq):
     if data == "publish":
         save_entry(now_str(), pending["operator"], pending["text"])
         PENDING_EDITS.pop(chat_id, None)
-        send(chat_id, "Nota pubblicata sulla pergamena ✅")
+        send(chat_id, "✅ Nota pubblicata sulla pergamena")
     elif data == "edit":
         pending["awaiting_edit"] = True
         send(chat_id, f"Testo attuale:\n\n{pending['text']}\n\nScrivimi il testo corretto.")
     elif data == "cancel":
         PENDING_EDITS.pop(chat_id, None)
-        send(chat_id, "Nota annullata.")
+        send(chat_id, "🚫 Nota annullata.")
 
 
 @app.route("/webhook", methods=["POST"])
@@ -307,7 +307,7 @@ PERGAMENA_HTML = """<!DOCTYPE html>
 </head>
 <body>
     <div class="container">
-        <h1>Diario Operativo</h1>
+        <h1>📜 Diario Operativo</h1>
         <form method="GET" action="/" class="filters">
             <input type="text" name="q" value="{{ search_query }}" placeholder="Cerca nel testo...">
             <select name="operator">
@@ -316,7 +316,7 @@ PERGAMENA_HTML = """<!DOCTYPE html>
                 <option value="{{ name }}" {% if name == selected_operator %}selected{% endif %}>{{ name }}</option>
                 {% endfor %}
             </select>
-            <button type="submit" class="btn">Filtra</button>
+            <button type="submit" class="btn">🔍 Filtra</button>
         </form>
 
         {% if entries %}
@@ -328,11 +328,11 @@ PERGAMENA_HTML = """<!DOCTYPE html>
                 </div>
                 <div class="entry-content" id="content-{{ e.id }}">{{ e.text }}</div>
                 <div class="entry-actions">
-                    <button type="button" class="btn-small" onclick="copyText({{ e.id }})">Copia</button>
+                    <button type="button" class="btn-small" onclick="copyText({{ e.id }})">📋 Copia</button>
                     <form method="POST" action="/delete/{{ e.id }}" onsubmit="return confirm('Eliminare questa nota?');">
                         <input type="hidden" name="q" value="{{ search_query }}">
                         <input type="hidden" name="operator" value="{{ selected_operator }}">
-                        <button type="submit" class="btn-small btn-delete">Elimina</button>
+                        <button type="submit" class="btn-small btn-delete">🗑️ Elimina</button>
                     </form>
                 </div>
             </div>
@@ -342,7 +342,7 @@ PERGAMENA_HTML = """<!DOCTYPE html>
         {% endif %}
 
         <div class="actions">
-            <a class="btn" href="{{ url_for('export_docx', q=search_query, operator=selected_operator) }}">Esporta in Word</a>
+            <a class="btn" href="{{ url_for('export_docx', q=search_query, operator=selected_operator) }}">📄 Esporta in Word</a>
         </div>
     </div>
 </body>

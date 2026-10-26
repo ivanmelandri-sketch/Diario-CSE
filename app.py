@@ -34,37 +34,11 @@ def init_db():
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
     if db_type == "postgres":
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS entries (
-                id SERIAL PRIMARY KEY,
-                timestamp TEXT NOT NULL,
-                operator TEXT NOT NULL,
-                text TEXT NOT NULL
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS operators (
-                chat_id BIGINT PRIMARY KEY,
-                name TEXT NOT NULL,
-                registered_at TEXT NOT NULL
-            )
-        ''')
+        cursor.execute("CREATE TABLE IF NOT EXISTS entries (id SERIAL PRIMARY KEY, timestamp TEXT NOT NULL, operator TEXT NOT NULL, text TEXT NOT NULL)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS operators (chat_id BIGINT PRIMARY KEY, name TEXT NOT NULL, registered_at TEXT NOT NULL)")
     else:
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                operator TEXT NOT NULL,
-                text TEXT NOT NULL
-            )
-        ''')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS operators (
-                chat_id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                registered_at TEXT NOT NULL
-            )
-        ''')
+        cursor.execute("CREATE TABLE IF NOT EXISTS entries (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, operator TEXT NOT NULL, text TEXT NOT NULL)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS operators (chat_id INTEGER PRIMARY KEY, name TEXT NOT NULL, registered_at TEXT NOT NULL)")
     conn.commit()
     conn.close()
 
@@ -76,15 +50,9 @@ def register_operator(chat_id, name):
     now_str = datetime.now(ITALY_TZ).strftime("%d/%m/%Y %H:%M")
     try:
         if db_type == "postgres":
-            cursor.execute(
-                "INSERT INTO operators (chat_id, name, registered_at) VALUES (%s, %s, %s) ON CONFLICT (chat_id) DO UPDATE SET name = EXCLUDED.name",
-                (chat_id, name, now_str)
-            )
+            cursor.execute("INSERT INTO operators (chat_id, name, registered_at) VALUES (%s, %s, %s) ON CONFLICT (chat_id) DO UPDATE SET name = EXCLUDED.name", (chat_id, name, now_str))
         else:
-            cursor.execute(
-                "INSERT OR REPLACE INTO operators (chat_id, name, registered_at) VALUES (?, ?, ?)",
-                (chat_id, name, now_str)
-            )
+            cursor.execute("INSERT OR REPLACE INTO operators (chat_id, name, registered_at) VALUES (?, ?, ?)", (chat_id, name, now_str))
         conn.commit()
     except Exception:
         pass
@@ -105,7 +73,6 @@ def get_all_operators_chat_ids():
 def load_entries(search_query=None):
     conn, db_type = get_db_connection()
     cursor = conn.cursor()
-    
     if search_query:
         if db_type == "postgres":
             cursor.execute("SELECT timestamp, operator, text FROM entries WHERE text ILIKE %s OR operator ILIKE %s ORDER BY id DESC", (f"%{search_query}%", f"%{search_query}%"))
@@ -113,10 +80,8 @@ def load_entries(search_query=None):
             cursor.execute("SELECT timestamp, operator, text FROM entries WHERE text LIKE ? OR operator LIKE ? ORDER BY id DESC", (f"%{search_query}%", f"%{search_query}%"))
     else:
         cursor.execute("SELECT timestamp, operator, text FROM entries ORDER BY id DESC")
-        
     rows = cursor.fetchall()
     conn.close()
-    
     if db_type == "postgres":
         return [{"timestamp": row[0], "operator": row[1], "text": row[2]} for row in rows]
     else:
@@ -146,18 +111,6 @@ def advanced_local_cleaner(text):
     cleaned = re.sub(r'\s+', ' ', text).strip()
     if not cleaned:
         return ""
-    intro_pattern = r'^(allora|dunque|praticamente|insomma|cioè|aspetta|fammi pensare|dunque fammi pensare)[\s,]+'
-    cleaned = re.sub(intro_pattern, '', cleaned, flags=re.IGNORECASE)
-    interjections_pattern = r'\b(eh+|ah+|ehm+|mmh+|boh|mah|oh+)\b'
-    cleaned = re.sub(interjections_pattern, '', cleaned, flags=re.IGNORECASE)
-    bad_words = ['cazzo', 'merda', 'stronzo', 'stronza', 'vaffanculo', 'coglione', 'pirla', 'idiota', 'fanculo']
-    for bw in bad_words:
-        pattern = r'\b' + bw + r'\b'
-        replacement = lambda m: m.group(0)[0] + '*' * (len(m.group(0)) - 2) + m.group(0)[-1] if len(m.group(0)) > 2 else '***'
-        cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    if not cleaned:
-        return text.strip()
     cleaned = cleaned[0].upper() + cleaned[1:]
     if cleaned[-1] not in ['.', '!', '?']:
         cleaned += '.'
@@ -171,22 +124,8 @@ def process_with_gemini(text):
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
-    
-    prompt = (
-        "Sei un assistente di redazione per un team socio-educativo. "
-        "Il tuo compito è prendere appunti rapidi e informali inviati via Telegram e trasformarli "
-        "esclusivamente in un paragrafo descrittivo dell'attività svolta, "
-        "scritto in modo chiaro, sintetico e professionale, ma con un tono naturale e scorrevole "
-        "(evita termini eccessivamente burocratici o clinici). "
-        "Regole tassative: "
-        "1. Non inserire data, ora, intestazioni, firme o saluti nel testo. "
-        "2. Non aggiungere frasi di chiusura. "
-        "3. Restituisci unicamente il testo della descrizione pulita e sintetica."
-    )
-
-    payload = {
-        "contents": [{"parts": [{"text": f"{prompt}\n\nTesto da elaborare:\n{text}"}]}]
-    }
+    prompt = "Sei un assistente di redazione per un team socio-educativo. Trasforma gli appunti in un paragrafo descrittivo chiaro, sintetico e professionale, senza data, ora, firme o saluti."
+    payload = {"contents": [{"parts": [{"text": f"{prompt}\n\nTesto:\n{text}"}]}]}
 
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=15)
@@ -221,12 +160,11 @@ PERGAMENA_HTML = """<!DOCTYPE html>
         .actions { text-align: center; margin-top: 30px; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; }
         .btn { background-color: #8b5a2b; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; font-family: sans-serif; font-weight: bold; font-size: 1em; }
         .btn:hover { background-color: #5c4033; }
-        @media (max-width: 600px) { body { padding: 5px; } .container { padding: 12px; } .entry-content { font-size: 1.2em; } .btn, .btn-small { padding: 10px 16px; font-size: 1em; } }
     </style>
     <script>
         function copyText(id) {
             const text = document.getElementById('content-' + id).innerText;
-            navigator.clipboard.writeText(text).then(() => { alert('Testo copiato negli appunti!'); });
+            navigator.clipboard.writeText(text).then(() => { alert('Copiato!'); });
         }
     </script>
 </head>
@@ -234,7 +172,7 @@ PERGAMENA_HTML = """<!DOCTYPE html>
     <div class="container">
         <h1>Diario Operativo</h1>
         <form method="GET" action="/" style="text-align: center; margin-bottom: 25px;">
-            <input type="text" name="q" value="{{ search_query if search_query else '' }}" placeholder="Cerca nome utente o parola chiave..." style="padding: 10px; width: 60%; max-width: 350px; border: 1px solid #d4c3a3; border-radius: 4px; background: #fff; font-family: 'Georgia', serif; font-size: 1em;">
+            <input type="text" name="q" value="{{ search_query if search_query else '' }}" placeholder="Cerca..." style="padding: 10px; width: 60%; max-width: 350px; border: 1px solid #d4c3a3; border-radius: 4px; background: #fff; font-family: 'Georgia', serif; font-size: 1em;">
             <button type="submit" class="btn-small" style="padding: 10px 15px; margin-left: 5px;">Filtra</button>
             {% if search_query %}
                 <a href="/" class="btn-small btn-delete" style="text-decoration: none; padding: 10px 15px; margin-left: 5px; display: inline-block;">Annulla</a>
@@ -242,9 +180,7 @@ PERGAMENA_HTML = """<!DOCTYPE html>
         </form>
         {% if entries %}
             {% for entry in entries %}
-                {% set colors = ['#fcf8e3', '#d9edf7', '#dff0d8', '#f2dede', '#fcf8e3', '#e8f4f8'] %}
-                {% set color_idx = entry.operator | string | length % colors | length %}
-                <div class="entry" style="background-color: {{ colors[color_idx] }};">
+                <div class="entry" style="background-color: #fcf8e3;">
                     <div class="entry-meta">
                         <span>👤 <b>{{ entry.operator }}</b></span>
                         <span>📅 {{ entry.timestamp }}</span>
@@ -252,12 +188,12 @@ PERGAMENA_HTML = """<!DOCTYPE html>
                     <div class="entry-content" id="content-{{ loop.index0 }}">{{ entry.text }}</div>
                     <div class="entry-actions">
                         <button class="btn-small" onclick="copyText('{{ loop.index0 }}')">Copia</button>
-                        <a href="/delete/{{ loop.index0 }}" class="btn-small btn-delete" onclick="return confirm('Eliminare questa voce?');">Elimina</a>
+                        <a href="/delete/{{ loop.index0 }}" class="btn-small btn-delete" onclick="return confirm('Eliminare?');">Elimina</a>
                     </div>
                 </div>
             {% endfor %}
         {% else %}
-            <p style="text-align: center; color: #7f6e62; font-size: 1.1em;">Nessuna voce registrata nel diario.</p>
+            <p style="text-align: center; color: #7f6e62;">Nessuna voce registrata.</p>
         {% endif %}
         <div class="actions">
             <a href="/export-word{% if search_query %}?q={{ search_query }}{% endif %}" class="btn">Stampa Fascicolo (.doc)</a>
@@ -282,3 +218,56 @@ def delete_entry(index):
 def webhook():
     try:
         data = request.get_json(silent=True)
+        if data:
+            if "callback_query" in data:
+                cq = data["callback_query"]
+                callback_data = cq.get("data")
+                message = cq.get("message", {})
+                chat_id = message.get("chat", {}).get("id")
+                message_id = message.get("message_id")
+                operator_name = cq.get("from", {}).get("first_name", "Operatore")
+                
+                if chat_id:
+                    register_operator(chat_id, operator_name)
+                
+                raw_text = message.get("text", "")
+                text_to_save = raw_text
+                if "BOZZA ELABORATA:" in raw_text:
+                    text_to_save = raw_text.split("BOZZA ELABORATA:")[-1].strip()
+                text_to_save = text_to_save.strip()
+
+                if callback_data == "confirm_ok" and chat_id:
+                    PENDING_EDITS.pop(chat_id, None)
+                    now_italy = datetime.now(ITALY_TZ).strftime("%d/%m/%Y %H:%M")
+                    
+                    if text_to_save:
+                        save_entry(now_italy, operator_name, text_to_save)
+                    
+                    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
+                    requests.post(url, json={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "text": "PUBBLICATO CON SUCCESSO:\n\n" + text_to_save
+                    })
+                    
+                    all_operators = get_all_operators_chat_ids()
+                    notif_text = "Nuova voce pubblicata da " + operator_name + ":\n\n" + text_to_save
+                    for op_chat_id in all_operators:
+                        notif_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                        try:
+                            requests.post(notif_url, json={"chat_id": op_chat_id, "text": notif_text})
+                        except Exception:
+                            pass
+                    
+                elif callback_data == "edit_mode" and chat_id:
+                    PENDING_EDITS[chat_id] = message_id
+                    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/editMessageText"
+                    requests.post(url, json={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "text": "MODIFICA IN CORSO. Scrivi qui sotto il nuovo testo:"
+                    })
+
+            elif "message" in data and "text" in data["message"]:
+                message = data["message"]
+                chat_id =

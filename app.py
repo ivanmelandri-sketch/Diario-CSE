@@ -114,6 +114,15 @@ def load_entries(search_query=None, operator=None):
     return [{"id": r[0], "timestamp": r[1], "operator": r[2], "text": r[3]} for r in rows]
 
 
+def get_all_operators_chat_ids():
+    conn, _ = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT chat_id FROM operators")
+    ids = [r[0] for r in cur.fetchall()]
+    conn.close()
+    return ids
+
+
 def load_operator_names():
     conn, _ = get_db_connection()
     cur = conn.cursor()
@@ -234,6 +243,16 @@ def handle_message(msg):
              [("✏️ Modifica", "edit"), ("❌ Annulla", "cancel")])
 
 
+def notify_operators(author_chat_id, author_name, text):
+    """Avvisa tutti gli operatori registrati (tranne l'autore, che ha già la conferma)."""
+    try:
+        for other_id in get_all_operators_chat_ids():
+            if other_id != author_chat_id:
+                send(other_id, f"🔔 Nuova nota di {author_name} sulla pergamena:\n\n{text}")
+    except Exception:
+        app.logger.exception("Errore invio notifiche")
+
+
 def handle_callback(cq):
     chat_id = cq["message"]["chat"]["id"]
     data = cq.get("data")
@@ -248,6 +267,7 @@ def handle_callback(cq):
         save_entry(now_str(), pending["operator"], pending["text"])
         PENDING_EDITS.pop(chat_id, None)
         send(chat_id, "✅ Nota pubblicata sulla pergamena")
+        notify_operators(chat_id, pending["operator"], pending["text"])
     elif data == "edit":
         pending["awaiting_edit"] = True
         send(chat_id, f"Testo attuale:\n\n{pending['text']}\n\nScrivimi il testo corretto.")

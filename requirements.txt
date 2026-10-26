@@ -1,5 +1,6 @@
-Flask
+flask
+gunicorn
 requests
 pytz
-gunicorn
 psycopg2-binary
+python-docx

@@ -167,6 +167,7 @@ def process_with_gemini(text):
     if not GEMINI_API_KEY:
         return advanced_local_cleaner(text)
 
+    # Endpoint ufficiale e stabile
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     
@@ -187,7 +188,7 @@ def process_with_gemini(text):
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=12)
+        response = requests.post(url, headers=headers, json=payload, timeout=15)
         if response.status_code == 200:
             res_json = response.json()
             candidates = res_json.get("candidates", [])
@@ -370,6 +371,14 @@ def webhook():
     if not data:
         return "OK", 200
 
+    # Gestione dei pulsanti inline (Conferma o Modifica)
     if "callback_query" in data:
         cq = data["callback_query"]
         callback_data = cq.get("data")
+        message = cq.get("message", {})
+        chat_id = message.get("chat", {}).get("id")
+        message_id = message.get("message_id")
+        operator_name = cq.get("from", {}).get("first_name", "Operatore")
+        
+        if chat_id:
+            register_operator

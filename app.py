@@ -17,7 +17,6 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ITALY_TZ = pytz.timezone("Europe/Rome")
 
-# Dizionario in memoria per tracciare se un utente è in modalità modifica {chat_id: message_id}
 PENDING_EDITS = {}
 
 def get_db_connection():
@@ -168,7 +167,6 @@ def process_with_gemini(text):
     if not GEMINI_API_KEY:
         return advanced_local_cleaner(text)
 
-    # Endpoint ufficiale e stabile per Gemini 1.5 Flash
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     
@@ -198,11 +196,9 @@ def process_with_gemini(text):
     except Exception:
         pass
 
-    # Fallback di sicurezza locale nel caso l'API fallisca
     return advanced_local_cleaner(text)
 
-PERGAMENA_HTML = """
-<!DOCTYPE html>
+PERGAMENA_HTML = """<!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
@@ -212,3 +208,168 @@ PERGAMENA_HTML = """
         body {
             background-color: #f4ecd8;
             font-family: 'Georgia', serif;
+            color: #2c221e;
+            margin: 0;
+            padding: 15px;
+            font-size: 16px;
+        }
+        .container {
+            max-width: 850px;
+            margin: 0 auto;
+            background: #fff8eb;
+            border: 2px solid #d4c3a3;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            padding: 20px;
+            border-radius: 8px;
+        }
+        h1 {
+            text-align: center;
+            color: #5c4033;
+            border-bottom: 2px solid #d4c3a3;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+            font-size: 1.8em;
+        }
+        .entry {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid rgba(0,0,0,0.08);
+            position: relative;
+        }
+        .entry-meta {
+            font-size: 0.95em;
+            color: #555;
+            margin-bottom: 10px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .entry-content {
+            font-size: 1.15em;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            margin-bottom: 15px;
+        }
+        .entry-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .btn-small {
+            background-color: #8b5a2b;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            font-size: 0.95em;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn-small:hover {
+            background-color: #5c4033;
+        }
+        .btn-delete {
+            background-color: #a94442;
+        }
+        .btn-delete:hover {
+            background-color: #761c19;
+        }
+        .actions {
+            text-align: center;
+            margin-top: 30px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            background-color: #8b5a2b;
+            color: white;
+            padding: 12px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-family: sans-serif;
+            font-weight: bold;
+            font-size: 1em;
+        }
+        .btn:hover {
+            background-color: #5c4033;
+        }
+        @media (max-width: 600px) {
+            body { padding: 5px; }
+            .container { padding: 12px; }
+            .entry-content { font-size: 1.2em; }
+            .btn, .btn-small { padding: 10px 16px; font-size: 1em; }
+        }
+    </style>
+    <script>
+        function copyText(id) {
+            const text = document.getElementById('content-' + id).innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Testo copiato negli appunti!');
+            });
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Diario Operativo</h1>
+        
+        <form method="GET" action="/" style="text-align: center; margin-bottom: 25px;">
+            <input type="text" name="q" value="{{ search_query if search_query else '' }}" placeholder="Cerca nome utente o parola chiave..." style="padding: 10px; width: 60%; max-width: 350px; border: 1px solid #d4c3a3; border-radius: 4px; background: #fff; font-family: 'Georgia', serif; font-size: 1em;">
+            <button type="submit" class="btn-small" style="padding: 10px 15px; margin-left: 5px;">Filtra</button>
+            {% if search_query %}
+                <a href="/" class="btn-small btn-delete" style="text-decoration: none; padding: 10px 15px; margin-left: 5px; display: inline-block;">Annulla</a>
+            {% endif %}
+        </form>
+
+        {% if entries %}
+            {% for entry in entries %}
+                {% set colors = ['#fcf8e3', '#d9edf7', '#dff0d8', '#f2dede', '#fcf8e3', '#e8f4f8'] %}
+                {% set color_idx = entry.operator | string | length % colors | length %}
+                <div class="entry" style="background-color: {{ colors[color_idx] }};">
+                    <div class="entry-meta">
+                        <span>👤 <b>{{ entry.operator }}</b></span>
+                        <span>📅 {{ entry.timestamp }}</span>
+                    </div>
+                    <div class="entry-content" id="content-{{ loop.index0 }}">{{ entry.text }}</div>
+                    <div class="entry-actions">
+                        <button class="btn-small" onclick="copyText('{{ loop.index0 }}')">Copia</button>
+                        <a href="/delete/{{ loop.index0 }}" class="btn-small btn-delete" onclick="return confirm('Eliminare questa voce?');">Elimina</a>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p style="text-align: center; color: #7f6e62; font-size: 1.1em;">Nessuna voce registrata nel diario.</p>
+        {% endif %}
+        
+        <div class="actions">
+            <a href="/export-word{% if search_query %}?q={{ search_query }}{% endif %}" class="btn">Stampa Fascicolo (.doc)</a>
+            <a href="/export{% if search_query %}?q={{ search_query }}{% endif %}" class="btn">Scarica Backup (.txt)</a>
+        </div>
+    </div>
+</body>
+</html>"""
+
+@app.route("/")
+def index():
+    search_query = request.args.get("q", "").strip()
+    entries = load_entries(search_query if search_query else None)
+    return render_template_string(PERGAMENA_HTML, entries=entries, search_query=search_query)
+
+@app.route("/delete/<int:index>")
+def delete_entry(index):
+    delete_entry_by_index(index)
+    return redirect(url_for('index'))
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    if not data:
+        return "OK", 200
+
+    if "callback_query" in data:
+        cq = data["callback_query"]
+        callback_data = cq.get("data")

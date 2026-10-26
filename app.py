@@ -12,7 +12,8 @@ app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-3.8-flash-lite")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +23,7 @@ ITALY_TZ = pytz.timezone("Europe/Rome")
 PENDING_EDITS = {}
 
 GEMINI_RETRY_EVERY = 3     # secondi tra un tentativo e l'altro
-GEMINI_MAX_WAIT = 15       # secondi totali prima di passare alla modifica manuale
+GEMINI_MAX_WAIT = 15       # secondi massimi per ciascun modello (principale, poi riserva)
 
 
 # ---------------------------------------------------------------- DATABASE
@@ -132,8 +133,8 @@ def delete_entry(entry_id):
 
 # ------------------------------------------------------------------ GEMINI
 
-def call_gemini_once(text, timeout=5):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+def call_gemini_once(text, model, timeout=5):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     headers = {"Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY}
     prompt = ("Sei un assistente di redazione per un team socio-educativo. "
               "Trasforma gli appunti in un paragrafo descrittivo chiaro, sintetico e professionale, "
@@ -151,22 +152,36 @@ def call_gemini_once(text, timeout=5):
     return None
 
 
-def process_with_gemini(text):
-    """Riprova ogni 3 secondi per max 15 secondi. Restituisce None se non riesce."""
-    if not GEMINI_API_KEY:
-        return None
+def try_model(text, model):
+    """Riprova ogni 3 secondi per max 15 secondi con un solo modello."""
     start = time.time()
     while True:
         try:
-            result = call_gemini_once(text)
+            result = call_gemini_once(text, model)
         except Exception:
-            app.logger.exception("Errore chiamata Gemini")
+            app.logger.exception("Errore chiamata Gemini (%s)", model)
             result = None
         if result:
             return result
         if time.time() - start + GEMINI_RETRY_EVERY >= GEMINI_MAX_WAIT:
             return None
         time.sleep(GEMINI_RETRY_EVERY)
+
+
+def process_with_gemini(text):
+    """Modello principale per 15 secondi, poi modello di riserva per altri 15.
+    Restituisce None se nessuno dei due riesce."""
+    if not GEMINI_API_KEY:
+        return None
+    models = [GEMINI_MODEL]
+    if GEMINI_FALLBACK_MODEL and GEMINI_FALLBACK_MODEL != GEMINI_MODEL:
+        models.append(GEMINI_FALLBACK_MODEL)
+    for model in models:
+        result = try_model(text, model)
+        if result:
+            return result
+        app.logger.warning("Modello %s non ha risposto, passo al successivo", model)
+    return None
 
 
 # ---------------------------------------------------------------- TELEGRAM
